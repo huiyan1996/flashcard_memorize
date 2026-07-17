@@ -27,6 +27,19 @@ const HEADER_MEANINGS = new Set([
   '含义',
 ])
 
+const EXCEL_MIME_TYPES = new Set([
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/haansoftxlsx',
+])
+
+const CSV_MIME_TYPES = new Set([
+  'text/csv',
+  'application/csv',
+  'text/comma-separated-values',
+  'text/plain',
+])
+
 const cellToString = (value) => {
   if (value === null || value === undefined) {
     return ''
@@ -60,6 +73,69 @@ const toUint8Array = (input) => {
   }
 
   return new Uint8Array(Buffer.from(input))
+}
+
+const looksLikeXlsx = (data) => {
+  return data.length >= 2 && data[0] === 0x50 && data[1] === 0x4b
+}
+
+const looksLikeXls = (data) => {
+  return (
+    data.length >= 8
+    && data[0] === 0xd0
+    && data[1] === 0xcf
+    && data[2] === 0x11
+    && data[3] === 0xe0
+  )
+}
+
+export const detectImportExtension = (fileName = '', mimeType = '', buffer) => {
+  const matchedExtension = String(fileName).match(/\.(csv|xlsx|xls)$/i)?.[1]
+
+  if (matchedExtension) {
+    return matchedExtension.toLowerCase()
+  }
+
+  const normalizedMime = String(mimeType || '').toLowerCase()
+
+  if (normalizedMime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+    return 'xlsx'
+  }
+
+  if (normalizedMime === 'application/vnd.ms-excel' || normalizedMime === 'application/haansoftxlsx') {
+    return 'xls'
+  }
+
+  if (CSV_MIME_TYPES.has(normalizedMime)) {
+    return 'csv'
+  }
+
+  if (buffer) {
+    const data = toUint8Array(buffer)
+
+    if (looksLikeXlsx(data)) {
+      return 'xlsx'
+    }
+
+    if (looksLikeXls(data)) {
+      return 'xls'
+    }
+  }
+
+  return ''
+}
+
+export const resolveImportFileName = (fileName = '', mimeType = '', buffer) => {
+  const baseName = String(fileName).split(/[/\\]/).pop()?.trim() || ''
+
+  if (/\.(csv|xlsx|xls)$/i.test(baseName)) {
+    return baseName
+  }
+
+  const extension = detectImportExtension(baseName, mimeType, buffer) || 'csv'
+  const safeBase = baseName || 'import'
+
+  return `${safeBase}.${extension}`
 }
 
 export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
@@ -150,6 +226,22 @@ export const getTitleFromFileName = (fileName = '') => {
   return title.slice(0, 200)
 }
 
-export const isSupportedImportFile = (fileName = '') => {
-  return /\.(csv|xlsx|xls)$/i.test(fileName)
+export const isSupportedImportFile = (fileName = '', mimeType = '', buffer) => {
+  if (/\.(csv|xlsx|xls)$/i.test(fileName)) {
+    return true
+  }
+
+  const normalizedMime = String(mimeType || '').toLowerCase()
+
+  if (EXCEL_MIME_TYPES.has(normalizedMime) || CSV_MIME_TYPES.has(normalizedMime)) {
+    return true
+  }
+
+  if (!buffer) {
+    return false
+  }
+
+  const data = toUint8Array(buffer)
+
+  return looksLikeXlsx(data) || looksLikeXls(data)
 }

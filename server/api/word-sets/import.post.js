@@ -5,6 +5,7 @@ import {
   getTitleFromFileName,
   isSupportedImportFile,
   parseWordRowsFromBuffer,
+  resolveImportFileName,
 } from '../../utils/parse-word-file'
 import { serializeWordSet, toObjectId } from '../../utils/word-set'
 
@@ -40,9 +41,10 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const importedFileName = filePart.filename || 'import.csv'
+  const mimeType = filePart.type || ''
+  const importedFileName = resolveImportFileName(filePart.filename || '', mimeType, filePart.data)
 
-  if (!isSupportedImportFile(importedFileName)) {
+  if (!isSupportedImportFile(filePart.filename || '', mimeType, filePart.data)) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Only CSV and Excel files (.csv, .xlsx, .xls) are supported.',

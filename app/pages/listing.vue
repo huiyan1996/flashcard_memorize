@@ -419,9 +419,12 @@
               type="file"
               accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               class="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
-              aria-label="Import word set file"
+              aria-label="Import CSV or Excel word set file"
               @change="handleImportFileChange"
             >
+            <p class="mt-2 text-xs text-slate-500">
+              Accepted formats: .csv, .xlsx, .xls
+            </p>
             <p
               v-if="importForm.fileName"
               class="mt-2 text-sm text-slate-600"
@@ -518,9 +521,30 @@
             </table>
           </div>
 
+          <div class="mt-4 flex flex-wrap gap-3">
+            <a
+              href="/samples/flashmem-sample.csv"
+              download="flashmem-sample.csv"
+              class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Download sample CSV file"
+              tabindex="0"
+            >
+              Download sample CSV
+            </a>
+            <a
+              href="/samples/flashmem-sample.xlsx"
+              download="flashmem-sample.xlsx"
+              class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Download sample Excel file"
+              tabindex="0"
+            >
+              Download sample Excel (.xlsx)
+            </a>
+          </div>
+
           <div class="mt-4">
             <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Sample CSV
+              Sample CSV text
             </p>
             <pre class="overflow-x-auto rounded-xl bg-slate-900 px-4 py-3 text-xs leading-relaxed text-slate-100">{{ sampleCsvText }}</pre>
           </div>
@@ -584,6 +608,28 @@ const sampleCsvText = [
   'ใช่,Yes,',
 ].join('\n')
 
+const SUPPORTED_IMPORT_EXTENSIONS = /\.(csv|xlsx|xls)$/i
+
+const isSupportedImportFile = (file) => {
+  if (!file) {
+    return false
+  }
+
+  if (SUPPORTED_IMPORT_EXTENSIONS.test(file.name || '')) {
+    return true
+  }
+
+  const mimeType = String(file.type || '').toLowerCase()
+
+  return [
+    'text/csv',
+    'application/csv',
+    'text/comma-separated-values',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ].includes(mimeType)
+}
+
 const resetImportForm = () => {
   importForm.title = ''
   importForm.file = null
@@ -615,8 +661,27 @@ const handleCloseImportModal = () => {
 
 const handleImportFileChange = (event) => {
   const file = event.target.files?.[0] || null
+
+  if (!file) {
+    importForm.file = null
+    importForm.fileName = ''
+    return
+  }
+
+  if (!isSupportedImportFile(file)) {
+    importForm.file = null
+    importForm.fileName = ''
+    importModalErrorMessage.value = 'Please choose a CSV or Excel file (.csv, .xlsx, or .xls).'
+
+    if (fileInputRef.value) {
+      fileInputRef.value.value = ''
+    }
+
+    return
+  }
+
   importForm.file = file
-  importForm.fileName = file?.name || ''
+  importForm.fileName = file.name || ''
   importModalErrorMessage.value = ''
 }
 
