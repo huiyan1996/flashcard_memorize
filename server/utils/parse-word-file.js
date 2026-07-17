@@ -1,7 +1,4 @@
 import { createError } from 'h3'
-import * as XLSXNamespace from 'xlsx'
-
-const XLSX = XLSXNamespace?.default || XLSXNamespace
 
 const HEADER_WORDS = new Set([
   'word',
@@ -211,7 +208,11 @@ export const detectImportExtension = (fileName = '', mimeType = '', buffer) => {
     return 'xlsx'
   }
 
-  if (normalizedMime === 'application/vnd.ms-excel' || normalizedMime === 'application/haansoftxlsx') {
+  if (
+    normalizedMime === 'application/vnd.ms-excel'
+    || normalizedMime === 'application/haansoftxlsx'
+    || EXCEL_MIME_TYPES.has(normalizedMime)
+  ) {
     return 'xls'
   }
 
@@ -241,7 +242,14 @@ export const resolveImportFileName = (fileName = '', mimeType = '', buffer) => {
   return `import.${extension}`
 }
 
-const rowsFromExcelBuffer = (buffer) => {
+const loadXlsx = async () => {
+  const imported = await import('xlsx')
+  return imported.default || imported
+}
+
+const rowsFromExcelBuffer = async (buffer) => {
+  const XLSX = await loadXlsx()
+
   if (!XLSX || typeof XLSX.read !== 'function') {
     throw new Error('Excel parser is unavailable on the server.')
   }
@@ -311,7 +319,7 @@ const normalizeWordRows = (rows, fileName = '') => {
   return words
 }
 
-export const parseWordRowsFromBuffer = (buffer, fileName = '', mimeType = '') => {
+export const parseWordRowsFromBuffer = async (buffer, fileName = '', mimeType = '') => {
   const extension = detectImportExtension(fileName, mimeType, buffer)
   const isCsv = extension === 'csv' || (!extension && looksLikeCsvText(buffer))
 
@@ -321,7 +329,7 @@ export const parseWordRowsFromBuffer = (buffer, fileName = '', mimeType = '') =>
       return normalizeWordRows(parseCsvRows(csvText), fileName)
     }
 
-    return normalizeWordRows(rowsFromExcelBuffer(buffer), fileName)
+    return normalizeWordRows(await rowsFromExcelBuffer(buffer), fileName)
   } catch (error) {
     if (error?.statusCode) {
       throw error
@@ -347,4 +355,19 @@ export const getTitleFromFileName = (fileName = '') => {
 
 export const isSupportedImportFile = (fileName = '', mimeType = '', buffer) => {
   return Boolean(detectImportExtension(fileName, mimeType, buffer))
+}
+
+export const decodeBase64FileContent = (contentBase64 = '') => {
+  const normalized = String(contentBase64 || '')
+    .replace(/^data:[^;]+;base64,/i, '')
+    .replace(/\s/g, '')
+
+  if (!normalized) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Please upload a CSV or Excel file.',
+    })
+  }
+
+  return Buffer.from(normalized, 'base64')
 }

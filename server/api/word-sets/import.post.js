@@ -2,6 +2,7 @@ import { connectDBFromEvent } from '../../utils/db'
 import { WordSet } from '../../models/WordSet'
 import { requireAuthUser } from '../../utils/auth'
 import {
+  decodeBase64FileContent,
   getTitleFromFileName,
   isSupportedImportFile,
   parseWordRowsFromBuffer,
@@ -9,13 +10,7 @@ import {
 } from '../../utils/parse-word-file'
 import { serializeWordSet, toObjectId } from '../../utils/word-set'
 
-const readFormText = (part) => {
-  if (!part?.data) {
-    return ''
-  }
-
-  return Buffer.from(part.data).toString('utf8').trim()
-}
+const MAX_IMPORT_BYTES = 4 * 1024 * 1024
 
 export default defineEventHandler(async (event) => {
   try {
@@ -31,54 +26,44 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    let formData
+    const body = await readBody(event).catch(() => null)
 
-    try {
-      formData = await readMultipartFormData(event)
-    } catch (error) {
-      console.error('[word-sets/import] multipart failed', error)
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Could not read the uploaded file. Please try again.',
-        data: {
-          cause: error?.message || 'multipart parse failed',
-        },
-      })
-    }
-
-    if (!formData?.length) {
+    if (!body || typeof body !== 'object') {
       throw createError({
         statusCode: 400,
         statusMessage: 'Please upload a CSV or Excel file.',
       })
     }
 
-    const filePart = formData.find((part) => part.name === 'file' && part.data?.length)
-    const titlePart = formData.find((part) => part.name === 'title')
-    const fileNamePart = formData.find((part) => part.name === 'fileName')
+    const originalFileName = String(body.fileName || '').trim()
+    const mimeType = String(body.mimeType || '').trim()
+    const customTitle = String(body.title || '').trim()
+    const fileBuffer = decodeBase64FileContent(body.contentBase64)
 
-    if (!filePart) {
+    if (!fileBuffer.length) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Please upload a CSV or Excel file.',
       })
     }
 
-    const mimeType = filePart.type || ''
-    // Prefer the UTF-8 text field from the client. Multipart Content-Disposition
-    // filenames are often corrupted for non-English characters.
-    const originalFileName = readFormText(fileNamePart) || filePart.filename || ''
-    const importedFileName = resolveImportFileName(originalFileName, mimeType, filePart.data)
+    if (fileBuffer.length > MAX_IMPORT_BYTES) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'File is too large. Please upload a file under 4MB.',
+      })
+    }
 
-    if (!isSupportedImportFile(originalFileName, mimeType, filePart.data)) {
+    const importedFileName = resolveImportFileName(originalFileName, mimeType, fileBuffer)
+
+    if (!isSupportedImportFile(originalFileName, mimeType, fileBuffer)) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Only CSV and Excel files (.csv, .xlsx, .xls) are supported.',
       })
     }
 
-    const words = parseWordRowsFromBuffer(filePart.data, importedFileName, mimeType)
-    const customTitle = readFormText(titlePart)
+    const words = await parseWordRowsFromBuffer(fileBuffer, importedFileName, mimeType)
     const title = (customTitle || getTitleFromFileName(importedFileName)).slice(0, 200)
 
     const wordSet = await WordSet.create({

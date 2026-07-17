@@ -707,6 +707,20 @@ const formatDate = (value) => {
   return new Date(value).toLocaleString()
 }
 
+const fileToBase64 = async (file) => {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  const chunkSize = 0x8000
+  let binary = ''
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+
+  return btoa(binary)
+}
+
 const handleImportSubmit = async () => {
   if (isImporting.value || !importForm.file) {
     importModalErrorMessage.value = 'Please choose a CSV or Excel file.'
@@ -720,26 +734,21 @@ const handleImportSubmit = async () => {
 
   try {
     const originalName = importForm.file.name || importForm.fileName || 'import.csv'
-    const extensionMatch = originalName.match(/\.(csv|xlsx|xls)$/i)
-    const safeUploadName = extensionMatch
-      ? `upload.${extensionMatch[1].toLowerCase()}`
-      : 'upload.csv'
-
-    const formData = new FormData()
-    // Keep multipart filename ASCII-safe; send the real Unicode name separately.
-    formData.append('file', importForm.file, safeUploadName)
-    formData.append('fileName', originalName)
-
+    const contentBase64 = await fileToBase64(importForm.file)
     const nextTitle = importForm.title.trim()
-
-    if (nextTitle) {
-      formData.append('title', nextTitle)
-    }
 
     const response = await fetch('/api/word-sets/import', {
       method: 'POST',
-      body: formData,
       credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fileName: originalName,
+        mimeType: importForm.file.type || '',
+        contentBase64,
+        title: nextTitle || undefined,
+      }),
     })
 
     const payload = await response.json().catch(() => ({}))
