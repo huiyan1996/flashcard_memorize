@@ -1,3 +1,4 @@
+import { createError } from 'h3'
 import * as XLSX from 'xlsx'
 
 const HEADER_WORDS = new Set([
@@ -41,15 +42,50 @@ const isHeaderRow = (word, meaning) => {
   return HEADER_WORDS.has(normalizedWord) || HEADER_MEANINGS.has(normalizedMeaning)
 }
 
-export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
-  const isCsv = /\.csv$/i.test(fileName)
-  const workbook = XLSX.read(buffer, {
-    type: 'buffer',
-    raw: false,
-    codepage: isCsv ? 65001 : undefined,
-  })
+const toUint8Array = (input) => {
+  if (input instanceof Uint8Array) {
+    return input
+  }
 
-  const firstSheetName = workbook.SheetNames[0]
+  if (Buffer.isBuffer(input)) {
+    return new Uint8Array(input)
+  }
+
+  if (ArrayBuffer.isView(input)) {
+    return new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
+  }
+
+  if (input instanceof ArrayBuffer) {
+    return new Uint8Array(input)
+  }
+
+  return new Uint8Array(Buffer.from(input))
+}
+
+export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
+  let workbook
+
+  try {
+    const data = toUint8Array(buffer)
+    const isCsv = /\.csv$/i.test(fileName)
+
+    workbook = XLSX.read(data, {
+      type: 'array',
+      raw: false,
+      cellDates: true,
+      codepage: isCsv ? 65001 : undefined,
+    })
+  } catch (error) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Could not read ${fileName || 'the uploaded file'}. Make sure it is a valid CSV or Excel file.`,
+      data: {
+        cause: error?.message || 'Unknown parse error',
+      },
+    })
+  }
+
+  const firstSheetName = workbook.SheetNames?.[0]
 
   if (!firstSheetName) {
     throw createError({
@@ -63,6 +99,7 @@ export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
     header: 1,
     defval: '',
     blankrows: false,
+    raw: false,
   })
 
   const words = []
@@ -108,8 +145,9 @@ export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
 export const getTitleFromFileName = (fileName = '') => {
   const baseName = String(fileName).split(/[/\\]/).pop() || 'Untitled word set'
   const withoutExtension = baseName.replace(/\.(csv|xlsx|xls)$/i, '').trim()
+  const title = withoutExtension || 'Untitled word set'
 
-  return withoutExtension || 'Untitled word set'
+  return title.slice(0, 200)
 }
 
 export const isSupportedImportFile = (fileName = '') => {

@@ -49,20 +49,41 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const words = parseWordRowsFromBuffer(filePart.data, importedFileName)
+  let words
+
+  try {
+    words = parseWordRowsFromBuffer(filePart.data, importedFileName)
+  } catch (error) {
+    if (error?.statusCode) {
+      throw error
+    }
+
+    throw createError({
+      statusCode: 400,
+      statusMessage: error?.message || 'Failed to parse the uploaded file.',
+    })
+  }
+
   const customTitle = titlePart?.data ? Buffer.from(titlePart.data).toString('utf8').trim() : ''
-  const title = customTitle || getTitleFromFileName(importedFileName)
+  const title = (customTitle || getTitleFromFileName(importedFileName)).slice(0, 200)
 
-  const wordSet = await WordSet.create({
-    userId,
-    title,
-    words,
-    wordCount: words.length,
-  })
+  try {
+    const wordSet = await WordSet.create({
+      userId,
+      title,
+      words,
+      wordCount: words.length,
+    })
 
-  return {
-    wordSet: serializeWordSet(wordSet, {
-      currentUserId: user.id,
-    }),
+    return {
+      wordSet: serializeWordSet(wordSet, {
+        currentUserId: user.id,
+      }),
+    }
+  } catch (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: error?.message || 'Failed to save the imported word set.',
+    })
   }
 })
