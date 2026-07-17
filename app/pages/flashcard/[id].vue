@@ -1,5 +1,8 @@
 <template>
-  <section class="flex min-h-[calc(100vh-8rem)] flex-col">
+  <section
+    class="flex min-h-[calc(100vh-8rem)] flex-col"
+    @pointerdown.capture="handleUnlockSpeech"
+  >
     <div class="mb-4 flex items-center justify-between gap-4">
       <NuxtLink
         to="/listing"
@@ -286,7 +289,7 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
-const { isSupported, isSpeaking, speak, stopSpeaking } = useSpeechSynthesis()
+const { isSupported, isSpeaking, speak, stopSpeaking, unlockSpeech } = useSpeechSynthesis()
 const wordSet = ref(null)
 const queue = ref([])
 const currentQueueIndex = ref(0)
@@ -300,6 +303,10 @@ const wasCompletedOnEntry = ref(false)
 const isCompletionModalOpen = ref(false)
 const hasShownCompletionModal = ref(false)
 const completionModalTitleId = 'flashcard-completion-modal-title'
+
+const handleUnlockSpeech = () => {
+  unlockSpeech()
+}
 
 const currentCard = computed(() => queue.value[currentQueueIndex.value] || null)
 const canSpeak = computed(() => (
@@ -413,6 +420,7 @@ const handleFlipCard = () => {
     return
   }
 
+  unlockSpeech()
   isFlipped.value = true
   speakCurrentWord()
 }
@@ -422,6 +430,7 @@ const handleReadAloud = () => {
     return
   }
 
+  unlockSpeech()
   speakCurrentWord()
 }
 

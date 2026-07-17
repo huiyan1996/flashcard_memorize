@@ -10,6 +10,8 @@ export const useSpeechSynthesis = () => {
   const isSpeaking = ref(false)
   let speakRequestId = 0
   let voicesChangedHandler = null
+  let isUnlocked = false
+  let cachedVoices = []
 
   const clearVoicesHandler = () => {
     if (!import.meta.client || !voicesChangedHandler) {
@@ -20,9 +22,53 @@ export const useSpeechSynthesis = () => {
     voicesChangedHandler = null
   }
 
+  const refreshVoices = () => {
+    if (!import.meta.client || !isSupported.value) {
+      return []
+    }
+
+    cachedVoices = window.speechSynthesis.getVoices() || []
+    return cachedVoices
+  }
+
+  const ensureVoicesListener = () => {
+    if (!import.meta.client || !isSupported.value || voicesChangedHandler) {
+      return
+    }
+
+    voicesChangedHandler = () => {
+      refreshVoices()
+    }
+
+    window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler)
+    refreshVoices()
+  }
+
+  /**
+   * Mobile browsers (especially iOS Safari) need speech synthesis primed
+   * after a user gesture. Keep this lightweight — avoid cancel() here so a
+   * following speak() in the same tap is not dropped.
+   */
+  const unlockSpeech = () => {
+    if (!import.meta.client || !isSupported.value || isUnlocked) {
+      return
+    }
+
+    isUnlocked = true
+    ensureVoicesListener()
+    refreshVoices()
+
+    try {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume()
+      }
+    } catch {
+      // Ignore unlock failures; later speak() may still work.
+    }
+  }
+
   const stopSpeaking = () => {
     speakRequestId += 1
-    clearVoicesHandler()
 
     if (!import.meta.client || !isSupported.value) {
       isSpeaking.value = false
@@ -38,7 +84,7 @@ export const useSpeechSynthesis = () => {
       return null
     }
 
-    const voices = window.speechSynthesis.getVoices()
+    const voices = cachedVoices.length ? cachedVoices : refreshVoices()
     const exactMatch = voices.find((voice) => voice.lang === lang)
 
     if (exactMatch) {
@@ -60,7 +106,11 @@ export const useSpeechSynthesis = () => {
       return false
     }
 
-    stopSpeaking()
+    unlockSpeech()
+    ensureVoicesListener()
+    refreshVoices()
+
+    speakRequestId += 1
     const requestId = speakRequestId
 
     const runSpeak = () => {
@@ -68,7 +118,9 @@ export const useSpeechSynthesis = () => {
         return
       }
 
-      clearVoicesHandler()
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume()
+      }
 
       const utterance = new SpeechSynthesisUtterance(nextText)
 
@@ -78,6 +130,12 @@ export const useSpeechSynthesis = () => {
 
         if (voice) {
           utterance.voice = voice
+        }
+      }
+
+      utterance.onstart = () => {
+        if (requestId === speakRequestId) {
+          isSpeaking.value = true
         }
       }
 
@@ -94,24 +152,43 @@ export const useSpeechSynthesis = () => {
       }
 
       isSpeaking.value = true
-      window.speechSynthesis.speak(utterance)
+
+      try {
+        window.speechSynthesis.speak(utterance)
+
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume()
+        }
+      } catch {
+        isSpeaking.value = false
+      }
     }
 
-    const voices = window.speechSynthesis.getVoices()
+    const wasBusy = window.speechSynthesis.speaking || window.speechSynthesis.pending
 
-    if (!voices.length) {
-      voicesChangedHandler = runSpeak
-      window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler)
-      window.speechSynthesis.getVoices()
+    if (wasBusy) {
+      window.speechSynthesis.cancel()
+      // cancel() + speak() in the same tick drops the first utterance on many phones.
+      window.setTimeout(runSpeak, 80)
       return true
     }
 
+    // Speak in the same user-gesture turn so iOS allows audio.
     runSpeak()
     return true
   }
 
+  onMounted(() => {
+    if (!import.meta.client || !isSupported.value) {
+      return
+    }
+
+    ensureVoicesListener()
+  })
+
   onBeforeUnmount(() => {
     stopSpeaking()
+    clearVoicesHandler()
   })
 
   return {
@@ -119,5 +196,6 @@ export const useSpeechSynthesis = () => {
     isSpeaking,
     speak,
     stopSpeaking,
+    unlockSpeech,
   }
 }
