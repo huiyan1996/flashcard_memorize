@@ -79,6 +79,7 @@
               :aria-label="isFlipped ? 'Card answer shown' : 'Flip card to see word'"
               :tabindex="isFlipped ? -1 : 0"
               :disabled="isFlipped"
+              @touchstart.passive="handleCardTouchStart"
               @pointerdown="handleCardPointerDown"
               @click="handleFlipCard"
               @keydown.enter="handleFlipCard"
@@ -128,6 +129,7 @@
                 :disabled="!canSpeak || isSaving"
                 aria-label="Read word aloud"
                 tabindex="0"
+                @touchstart.passive="handleReadTouchStart"
                 @pointerdown="handleReadPointerDown"
                 @click="handleReadAloud"
                 @keydown.enter="handleReadAloud"
@@ -307,6 +309,16 @@ const isCompletionModalOpen = ref(false)
 const hasShownCompletionModal = ref(false)
 const completionModalTitleId = 'flashcard-completion-modal-title'
 let lastReadAt = 0
+let lastFlipAt = 0
+
+const isIOSClient = computed(() => {
+  if (!import.meta.client) {
+    return false
+  }
+
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+})
 
 const handleUnlockSpeech = () => {
   unlockSpeech()
@@ -332,7 +344,7 @@ const speechHint = computed(() => {
   }
 
   if (speechIssue.value === 'failed') {
-    return t('flashcard.speechFailed')
+    return isIOSClient.value ? t('flashcard.speechFailedIos') : t('flashcard.speechFailed')
   }
 
   return ''
@@ -443,12 +455,24 @@ const handleFlipCard = () => {
     return
   }
 
+  // touchstart + pointerdown + click can all fire; only flip once.
+  const now = Date.now()
+
+  if (now - lastFlipAt < 400) {
+    return
+  }
+
+  lastFlipAt = now
   unlockSpeech()
   isFlipped.value = true
   speakCurrentWord()
 }
 
-// iOS Safari ties audio permission to touchstart/pointerdown more reliably than click.
+// iOS: touchstart is the most reliable user-gesture for speechSynthesis.
+const handleCardTouchStart = () => {
+  handleFlipCard()
+}
+
 const handleCardPointerDown = (event) => {
   if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
     return
@@ -462,7 +486,7 @@ const handleReadAloud = () => {
     return
   }
 
-  // Touch fires pointerdown + click; ignore the duplicate.
+  // Touch fires touchstart + pointerdown + click; ignore duplicates.
   const now = Date.now()
 
   if (now - lastReadAt < 400) {
@@ -472,6 +496,10 @@ const handleReadAloud = () => {
   lastReadAt = now
   unlockSpeech()
   speakCurrentWord()
+}
+
+const handleReadTouchStart = () => {
+  handleReadAloud()
 }
 
 const handleReadPointerDown = (event) => {

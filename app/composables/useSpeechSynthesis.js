@@ -35,11 +35,19 @@ export const useSpeechSynthesis = () => {
   let hasSpokenSuccessfully = false
   let cachedVoices = []
   let startWatchTimer = null
+  let resumeKeepAliveTimer = null
 
   const clearStartWatch = () => {
     if (startWatchTimer) {
       window.clearTimeout(startWatchTimer)
       startWatchTimer = null
+    }
+  }
+
+  const clearResumeKeepAlive = () => {
+    if (resumeKeepAliveTimer) {
+      window.clearInterval(resumeKeepAliveTimer)
+      resumeKeepAliveTimer = null
     }
   }
 
@@ -83,9 +91,8 @@ export const useSpeechSynthesis = () => {
   }
 
   /**
-   * Touch the speech engine on the first user gesture (voices + resume).
-   * iOS warm-up (empty speak + cancel) happens inside speak() so it stays
-   * in the same synchronous tap as the real word.
+   * Warm voices on first user gesture. Do not speak/cancel here — on WebKit,
+   * cancel() clears the queue asynchronously and will wipe a following speak().
    */
   const unlockSpeech = () => {
     if (!import.meta.client || !isSupported.value || isUnlocked) {
@@ -108,6 +115,7 @@ export const useSpeechSynthesis = () => {
   const stopSpeaking = () => {
     speakRequestId += 1
     clearStartWatch()
+    clearResumeKeepAlive()
 
     if (!import.meta.client || !isSupported.value) {
       isSpeaking.value = false
@@ -131,7 +139,7 @@ export const useSpeechSynthesis = () => {
     }
 
     const languagePrefix = lang.split('-')[0]
-    return voices.find((voice) => voice.lang.startsWith(languagePrefix)) || null
+    return voices.find((voice) => voice.lang.startsWith(`${languagePrefix}-`) || voice.lang === languagePrefix) || null
   }
 
   const speak = (text, lang = '') => {
@@ -148,12 +156,10 @@ export const useSpeechSynthesis = () => {
 
     const ios = isIOSDevice()
 
-    // Must stay synchronous with the tap — no setTimeout before the first speak.
     unlockSpeech()
     ensureVoicesListener()
     refreshVoices()
 
-    // OEM browsers (e.g. Vivo) often expose the API with zero usable voices.
     if (!cachedVoices.length && isLikelyBrokenOemBrowser()) {
       markSpeechIssue('oem-browser')
     }
@@ -162,16 +168,19 @@ export const useSpeechSynthesis = () => {
     const requestId = speakRequestId
     let hasStarted = false
     clearStartWatch()
+    clearResumeKeepAlive()
 
     const buildUtterance = () => {
       const utterance = new SpeechSynthesisUtterance(nextText)
+      utterance.volume = 1
+      utterance.rate = 1
+      utterance.pitch = 1
 
       if (lang) {
         utterance.lang = lang
 
-        // Setting .voice on iOS before voices settle often kills the first speak.
-        // On broken OEM browsers, also prefer lang-only.
-        if (!ios && !isLikelyBrokenOemBrowser()) {
+        // Prefer lang-only until voices exist. Setting a missing voice breaks WebKit.
+        if (!isLikelyBrokenOemBrowser() && cachedVoices.length) {
           const voice = pickVoice(lang)
 
           if (voice) {
@@ -190,16 +199,53 @@ export const useSpeechSynthesis = () => {
         speechIssue.value = ''
         clearStartWatch()
         isSpeaking.value = true
-      }
 
-      utterance.onend = () => {
-        if (requestId === speakRequestId) {
-          isSpeaking.value = false
+        // iOS can pause mid-utterance; keep it alive for short words too.
+        if (ios) {
+          clearResumeKeepAlive()
+          resumeKeepAliveTimer = window.setInterval(() => {
+            if (requestId !== speakRequestId || !window.speechSynthesis.speaking) {
+              clearResumeKeepAlive()
+              return
+            }
+
+            try {
+              window.speechSynthesis.pause()
+              window.speechSynthesis.resume()
+            } catch {
+              clearResumeKeepAlive()
+            }
+          }, 5000)
         }
       }
 
-      utterance.onerror = () => {
-        if (requestId === speakRequestId && !hasStarted) {
+      utterance.onend = () => {
+        if (requestId !== speakRequestId) {
+          return
+        }
+
+        clearResumeKeepAlive()
+        isSpeaking.value = false
+      }
+
+      utterance.onerror = (event) => {
+        if (requestId !== speakRequestId) {
+          return
+        }
+
+        clearResumeKeepAlive()
+
+        const errorType = event?.error || ''
+
+        // cancel()/new speak() commonly fires these; not a real failure.
+        if (errorType === 'interrupted' || errorType === 'canceled') {
+          if (!hasStarted) {
+            isSpeaking.value = false
+          }
+          return
+        }
+
+        if (!hasStarted) {
           isSpeaking.value = false
           markSpeechIssue(isLikelyBrokenOemBrowser() ? 'oem-browser' : 'failed')
         }
@@ -234,25 +280,16 @@ export const useSpeechSynthesis = () => {
 
     const wasBusy = window.speechSynthesis.speaking || window.speechSynthesis.pending
 
-    // iOS: empty speak + cancel + real speak must run in the same user-gesture turn.
-    // Do not schedule a delayed cancel/retry — that loses the gesture and kills audio.
-    if (ios && !hasSpokenSuccessfully) {
-      try {
-        window.speechSynthesis.speak(new SpeechSynthesisUtterance(''))
-      } catch {
-        // Continue; the real utterance may still work.
-      }
-
+    // WebKit bug: speak() immediately after cancel() is often discarded.
+    // Only cancel when replacing an active utterance, then delay the next speak.
+    // First unlock speak must stay synchronous with the user tap — never cancel first.
+    if (wasBusy) {
       window.speechSynthesis.cancel()
-      runSpeak()
-    } else if (wasBusy) {
-      window.speechSynthesis.cancel()
-      runSpeak()
+      window.setTimeout(runSpeak, 60)
     } else {
       runSpeak()
     }
 
-    // If nothing starts, the browser likely has a stub/broken TTS implementation.
     startWatchTimer = window.setTimeout(() => {
       if (requestId !== speakRequestId || hasStarted || hasSpokenSuccessfully) {
         return
@@ -264,7 +301,7 @@ export const useSpeechSynthesis = () => {
           ? 'oem-browser'
           : 'failed',
       )
-    }, 1200)
+    }, 1500)
 
     return true
   }
@@ -288,6 +325,7 @@ export const useSpeechSynthesis = () => {
     stopSpeaking()
     clearVoicesHandler()
     clearStartWatch()
+    clearResumeKeepAlive()
   })
 
   return {
