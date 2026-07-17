@@ -1,5 +1,6 @@
 import { connectDBFromEvent } from '../../utils/db'
 import { WordSet } from '../../models/WordSet'
+import { User } from '../../models/User'
 import { requireAuthUser } from '../../utils/auth'
 import { serializeWordSet, toObjectId } from '../../utils/word-set'
 
@@ -23,7 +24,11 @@ export default defineEventHandler(async (event) => {
       { userId },
       { visibility: 'public' },
     ],
-  }).populate('userId', 'name')
+  }).populate({
+    path: 'userId',
+    select: 'name',
+    model: User,
+  })
 
   if (!wordSet) {
     throw createError({

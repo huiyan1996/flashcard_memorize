@@ -2,6 +2,10 @@ import mongoose from 'mongoose'
 import { createError } from 'h3'
 import { getMongoUri } from './runtime-secrets'
 
+// Ensure models are registered in every serverless bundle (needed for populate).
+import '../models/User'
+import '../models/WordSet'
+
 const CONNECTION_OPTIONS = {
   serverSelectionTimeoutMS: 8000,
   socketTimeoutMS: 45000,

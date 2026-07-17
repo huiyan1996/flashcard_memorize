@@ -1,6 +1,7 @@
 import { createError } from 'h3'
 import { connectDBFromEvent } from '../../utils/db'
 import { WordSet } from '../../models/WordSet'
+import { User } from '../../models/User'
 import { requireAuthUser } from '../../utils/auth'
 import { serializeWordSet, toObjectId } from '../../utils/word-set'
 
@@ -23,7 +24,11 @@ export default defineEventHandler(async (event) => {
       userId: { $ne: userId },
     })
       .sort({ createdAt: -1 })
-      .populate('userId', 'name')
+      .populate({
+        path: 'userId',
+        select: 'name',
+        model: User,
+      })
       .select('title wordCount visibility createdAt updatedAt userId words.flashcardStatus')
 
     return {
