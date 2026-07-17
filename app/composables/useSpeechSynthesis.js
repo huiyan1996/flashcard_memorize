@@ -83,8 +83,9 @@ export const useSpeechSynthesis = () => {
   }
 
   /**
-   * Prime speech on the first user gesture. iOS Safari often swallows the first
-   * real utterance unless the engine has already been touched in-gesture.
+   * Touch the speech engine on the first user gesture (voices + resume).
+   * iOS warm-up (empty speak + cancel) happens inside speak() so it stays
+   * in the same synchronous tap as the real word.
    */
   const unlockSpeech = () => {
     if (!import.meta.client || !isSupported.value || isUnlocked) {
@@ -98,14 +99,6 @@ export const useSpeechSynthesis = () => {
     try {
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume()
-      }
-
-      if (isIOSDevice()) {
-        const prime = new SpeechSynthesisUtterance('\u200B')
-        prime.rate = 2
-        prime.pitch = 1
-        prime.volume = 0.01
-        window.speechSynthesis.speak(prime)
       }
     } catch {
       // Ignore unlock failures; later speak() may still work.
@@ -154,8 +147,8 @@ export const useSpeechSynthesis = () => {
     }
 
     const ios = isIOSDevice()
-    const needsIOSRetry = ios && !hasSpokenSuccessfully
 
+    // Must stay synchronous with the tap — no setTimeout before the first speak.
     unlockSpeech()
     ensureVoicesListener()
     refreshVoices()
@@ -241,32 +234,23 @@ export const useSpeechSynthesis = () => {
 
     const wasBusy = window.speechSynthesis.speaking || window.speechSynthesis.pending
 
-    if (wasBusy && !needsIOSRetry) {
-      window.speechSynthesis.cancel()
-      window.setTimeout(runSpeak, 80)
-      return true
-    }
-
-    if (needsIOSRetry) {
-      if (window.speechSynthesis.pending || window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel()
+    // iOS: empty speak + cancel + real speak must run in the same user-gesture turn.
+    // Do not schedule a delayed cancel/retry — that loses the gesture and kills audio.
+    if (ios && !hasSpokenSuccessfully) {
+      try {
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(''))
+      } catch {
+        // Continue; the real utterance may still work.
       }
 
+      window.speechSynthesis.cancel()
       runSpeak()
-
-      window.setTimeout(() => {
-        if (requestId !== speakRequestId || hasStarted) {
-          return
-        }
-
-        window.speechSynthesis.cancel()
-        runSpeak()
-      }, 180)
-
-      return true
+    } else if (wasBusy) {
+      window.speechSynthesis.cancel()
+      runSpeak()
+    } else {
+      runSpeak()
     }
-
-    runSpeak()
 
     // If nothing starts, the browser likely has a stub/broken TTS implementation.
     startWatchTimer = window.setTimeout(() => {
@@ -280,7 +264,7 @@ export const useSpeechSynthesis = () => {
           ? 'oem-browser'
           : 'failed',
       )
-    }, 900)
+    }, 1200)
 
     return true
   }
