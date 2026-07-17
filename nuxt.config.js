@@ -7,10 +7,6 @@ export default defineNuxtConfig({
     '/api/**': { cache: false, swr: false },
   },
   nitro: {
-    moduleSideEffects: ['xlsx'],
-    externals: {
-      inline: ['xlsx'],
-    },
     routeRules: {
       '/api/**': {
         cors: true,

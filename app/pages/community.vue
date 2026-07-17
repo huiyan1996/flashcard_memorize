@@ -277,7 +277,7 @@ const loadPublicWordSets = async () => {
   errorMessage.value = ''
 
   try {
-    const response = await $fetch('/api/word-sets/public')
+    const response = await $fetch('/api/community/word-sets')
     wordSets.value = response.wordSets
   } catch (error) {
     errorMessage.value = error?.data?.statusMessage || 'Failed to load community word sets.'
