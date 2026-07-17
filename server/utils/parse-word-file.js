@@ -1,5 +1,7 @@
 import { createError } from 'h3'
-import * as XLSX from 'xlsx'
+import * as XLSXNamespace from 'xlsx'
+
+const XLSX = XLSXNamespace.default || XLSXNamespace
 
 const HEADER_WORDS = new Set([
   'word',
@@ -89,6 +91,15 @@ const looksLikeXls = (data) => {
   )
 }
 
+const hasUtf8Bom = (data) => {
+  return data.length >= 3 && data[0] === 0xef && data[1] === 0xbb && data[2] === 0xbf
+}
+
+const decodeCsvText = (data) => {
+  const bytes = hasUtf8Bom(data) ? data.subarray(3) : data
+  return Buffer.from(bytes).toString('utf8')
+}
+
 export const detectImportExtension = (fileName = '', mimeType = '', buffer) => {
   const matchedExtension = String(fileName).match(/\.(csv|xlsx|xls)$/i)?.[1]
 
@@ -138,19 +149,32 @@ export const resolveImportFileName = (fileName = '', mimeType = '', buffer) => {
   return `${safeBase}.${extension}`
 }
 
+const readWorkbook = (buffer, fileName = '') => {
+  const data = toUint8Array(buffer)
+  const isCsv = /\.csv$/i.test(fileName)
+
+  if (isCsv) {
+    const csvText = decodeCsvText(data)
+
+    return XLSX.read(csvText, {
+      type: 'string',
+      raw: false,
+      cellDates: true,
+    })
+  }
+
+  return XLSX.read(data, {
+    type: 'array',
+    raw: false,
+    cellDates: true,
+  })
+}
+
 export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
   let workbook
 
   try {
-    const data = toUint8Array(buffer)
-    const isCsv = /\.csv$/i.test(fileName)
-
-    workbook = XLSX.read(data, {
-      type: 'array',
-      raw: false,
-      cellDates: true,
-      codepage: isCsv ? 65001 : undefined,
-    })
+    workbook = readWorkbook(buffer, fileName)
   } catch (error) {
     throw createError({
       statusCode: 400,

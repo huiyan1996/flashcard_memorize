@@ -4,7 +4,7 @@ import { getMongoUri } from './runtime-secrets'
 
 const CONNECTION_OPTIONS = {
   serverSelectionTimeoutMS: 8000,
-  socketTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
   maxPoolSize: 5,
 }
 

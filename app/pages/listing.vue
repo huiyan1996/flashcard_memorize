@@ -720,7 +720,7 @@ const handleImportSubmit = async () => {
 
   try {
     const formData = new FormData()
-    formData.append('file', importForm.file)
+    formData.append('file', importForm.file, importForm.file.name || 'import.csv')
 
     const nextTitle = importForm.title.trim()
 
@@ -737,7 +737,15 @@ const handleImportSubmit = async () => {
     resetImportForm()
     await router.push(`/word-sets/${response.wordSet.id}`)
   } catch (error) {
-    importModalErrorMessage.value = error?.data?.statusMessage || 'Failed to import file.'
+    const statusMessage = error?.data?.statusMessage
+    const message = error?.data?.message || error?.statusMessage || error?.message
+    const isGenericServerError = !statusMessage || statusMessage === 'Server Error'
+
+    importModalErrorMessage.value = isGenericServerError
+      ? (message && message !== 'Server Error'
+        ? message
+        : 'Import failed. Please try again. If it keeps failing, rename the file to English characters and retry.')
+      : statusMessage
   } finally {
     isImporting.value = false
   }
