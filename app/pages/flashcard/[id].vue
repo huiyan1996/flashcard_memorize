@@ -1,8 +1,5 @@
 <template>
-  <section
-    class="flex min-h-[calc(100vh-8rem)] flex-col"
-    @pointerdown.capture="handleUnlockSpeech"
-  >
+  <section class="flex min-h-[calc(100vh-8rem)] flex-col">
     <div class="mb-4 flex items-center justify-between gap-4">
       <NuxtLink
         to="/listing"
@@ -79,7 +76,6 @@
               :aria-label="isFlipped ? 'Card answer shown' : 'Flip card to see word'"
               :tabindex="isFlipped ? -1 : 0"
               :disabled="isFlipped"
-              @pointerdown="handleCardPointerDown"
               @click="handleFlipCard"
               @keydown.enter="handleFlipCard"
             >
@@ -128,7 +124,6 @@
                 :disabled="!canSpeak || isSaving"
                 aria-label="Read word aloud"
                 tabindex="0"
-                @pointerdown="handleReadPointerDown"
                 @click="handleReadAloud"
                 @keydown.enter="handleReadAloud"
               >
@@ -152,11 +147,11 @@
             </div>
 
             <p
-              v-if="speechHint"
+              v-if="!wordSet.speechLanguage"
               class="mb-4 text-center text-sm text-amber-700"
               role="status"
             >
-              {{ speechHint }}
+              {{ t('flashcard.setSpeechLanguage') }}
             </p>
 
             <div class="mt-auto grid gap-3 pb-2 sm:grid-cols-3">
@@ -291,7 +286,7 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
-const { isSupported, isSpeaking, speechIssue, speak, stopSpeaking, unlockSpeech } = useSpeechSynthesis()
+const { isSupported, isSpeaking, speak, stopSpeaking } = useSpeechSynthesis()
 const { t } = useLocale()
 const wordSet = ref(null)
 const queue = ref([])
@@ -306,11 +301,6 @@ const wasCompletedOnEntry = ref(false)
 const isCompletionModalOpen = ref(false)
 const hasShownCompletionModal = ref(false)
 const completionModalTitleId = 'flashcard-completion-modal-title'
-let lastReadAt = 0
-
-const handleUnlockSpeech = () => {
-  unlockSpeech()
-}
 
 const currentCard = computed(() => queue.value[currentQueueIndex.value] || null)
 const canSpeak = computed(() => (
@@ -318,21 +308,6 @@ const canSpeak = computed(() => (
   && Boolean(wordSet.value?.speechLanguage)
   && Boolean(currentCard.value?.word)
 ))
-const speechHint = computed(() => {
-  if (!wordSet.value?.speechLanguage) {
-    return t('flashcard.setSpeechLanguage')
-  }
-
-  if (!isSupported.value || speechIssue.value === 'unsupported') {
-    return t('flashcard.speechUnsupported')
-  }
-
-  if (speechIssue.value === 'oem-browser') {
-    return t('flashcard.speechOemBrowser')
-  }
-
-  return ''
-})
 const currentPosition = computed(() => {
   if (!queue.value.length) {
     return 0
@@ -439,18 +414,8 @@ const handleFlipCard = () => {
     return
   }
 
-  unlockSpeech()
   isFlipped.value = true
   speakCurrentWord()
-}
-
-// iOS Safari ties audio permission to touchstart/pointerdown more reliably than click.
-const handleCardPointerDown = (event) => {
-  if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
-    return
-  }
-
-  handleFlipCard()
 }
 
 const handleReadAloud = () => {
@@ -458,24 +423,7 @@ const handleReadAloud = () => {
     return
   }
 
-  // Touch fires pointerdown + click; ignore the duplicate.
-  const now = Date.now()
-
-  if (now - lastReadAt < 400) {
-    return
-  }
-
-  lastReadAt = now
-  unlockSpeech()
   speakCurrentWord()
-}
-
-const handleReadPointerDown = (event) => {
-  if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
-    return
-  }
-
-  handleReadAloud()
 }
 
 const handleAnswer = async (status) => {

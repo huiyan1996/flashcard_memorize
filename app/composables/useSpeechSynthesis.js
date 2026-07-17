@@ -1,23 +1,3 @@
-const isIOSDevice = () => {
-  if (!import.meta.client) {
-    return false
-  }
-
-  return /iPad|iPhone|iPod/i.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-}
-
-const isLikelyBrokenOemBrowser = () => {
-  if (!import.meta.client) {
-    return false
-  }
-
-  const ua = navigator.userAgent || ''
-
-  // Vivo / iQOO / some OEM browsers advertise speechSynthesis but never play audio.
-  return /VivoBrowser|IQOOBrowser|HeyTapBrowser|OPPOBrowser|HuaweiBrowser|MiuiBrowser/i.test(ua)
-}
-
 export const useSpeechSynthesis = () => {
   const isSupported = computed(() => {
     if (!import.meta.client) {
@@ -28,13 +8,8 @@ export const useSpeechSynthesis = () => {
   })
 
   const isSpeaking = ref(false)
-  // Hint-only for broken OEM browsers. Do not drive iOS speak timing off this.
-  const speechIssue = ref('')
   let speakRequestId = 0
   let voicesChangedHandler = null
-  let isUnlocked = false
-  let hasSpokenSuccessfully = false
-  let cachedVoices = []
 
   const clearVoicesHandler = () => {
     if (!import.meta.client || !voicesChangedHandler) {
@@ -45,64 +20,9 @@ export const useSpeechSynthesis = () => {
     voicesChangedHandler = null
   }
 
-  const refreshVoices = () => {
-    if (!import.meta.client || !isSupported.value) {
-      return []
-    }
-
-    cachedVoices = window.speechSynthesis.getVoices() || []
-    return cachedVoices
-  }
-
-  const ensureVoicesListener = () => {
-    if (!import.meta.client || !isSupported.value || voicesChangedHandler) {
-      return
-    }
-
-    voicesChangedHandler = () => {
-      refreshVoices()
-    }
-
-    window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler)
-    refreshVoices()
-  }
-
-  const markSpeechIssue = (code) => {
-    speechIssue.value = code
-  }
-
-  /**
-   * Prime speech on the first user gesture. iOS Safari often swallows the first
-   * real utterance unless the engine has already been touched in-gesture.
-   */
-  const unlockSpeech = () => {
-    if (!import.meta.client || !isSupported.value || isUnlocked) {
-      return
-    }
-
-    isUnlocked = true
-    ensureVoicesListener()
-    refreshVoices()
-
-    try {
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume()
-      }
-
-      if (isIOSDevice()) {
-        const prime = new SpeechSynthesisUtterance('\u200B')
-        prime.rate = 2
-        prime.pitch = 1
-        prime.volume = 0.01
-        window.speechSynthesis.speak(prime)
-      }
-    } catch {
-      // Ignore unlock failures; later speak() may still work.
-    }
-  }
-
   const stopSpeaking = () => {
     speakRequestId += 1
+    clearVoicesHandler()
 
     if (!import.meta.client || !isSupported.value) {
       isSpeaking.value = false
@@ -118,7 +38,7 @@ export const useSpeechSynthesis = () => {
       return null
     }
 
-    const voices = cachedVoices.length ? cachedVoices : refreshVoices()
+    const voices = window.speechSynthesis.getVoices()
     const exactMatch = voices.find((voice) => voice.lang === lang)
 
     if (exactMatch) {
@@ -131,7 +51,6 @@ export const useSpeechSynthesis = () => {
 
   const speak = (text, lang = '') => {
     if (!import.meta.client || !isSupported.value) {
-      markSpeechIssue('unsupported')
       return false
     }
 
@@ -141,47 +60,25 @@ export const useSpeechSynthesis = () => {
       return false
     }
 
-    const ios = isIOSDevice()
-    const needsIOSRetry = ios && !hasSpokenSuccessfully
-
-    unlockSpeech()
-    ensureVoicesListener()
-    refreshVoices()
-
-    // Messaging only — do not change speak timing for OEM browsers.
-    if (isLikelyBrokenOemBrowser() && !cachedVoices.length) {
-      markSpeechIssue('oem-browser')
-    }
-
-    speakRequestId += 1
+    stopSpeaking()
     const requestId = speakRequestId
-    let hasStarted = false
 
-    const buildUtterance = () => {
+    const runSpeak = () => {
+      if (requestId !== speakRequestId) {
+        return
+      }
+
+      clearVoicesHandler()
+
       const utterance = new SpeechSynthesisUtterance(nextText)
 
       if (lang) {
         utterance.lang = lang
+        const voice = pickVoice(lang)
 
-        // Setting .voice on iOS before voices settle often kills the first speak.
-        if (!ios) {
-          const voice = pickVoice(lang)
-
-          if (voice) {
-            utterance.voice = voice
-          }
+        if (voice) {
+          utterance.voice = voice
         }
-      }
-
-      utterance.onstart = () => {
-        if (requestId !== speakRequestId) {
-          return
-        }
-
-        hasStarted = true
-        hasSpokenSuccessfully = true
-        speechIssue.value = ''
-        isSpeaking.value = true
       }
 
       utterance.onend = () => {
@@ -191,71 +88,21 @@ export const useSpeechSynthesis = () => {
       }
 
       utterance.onerror = () => {
-        if (requestId === speakRequestId && !hasStarted) {
+        if (requestId === speakRequestId) {
           isSpeaking.value = false
-
-          if (isLikelyBrokenOemBrowser()) {
-            markSpeechIssue('oem-browser')
-          }
         }
       }
 
-      return utterance
-    }
-
-    const runSpeak = () => {
-      if (requestId !== speakRequestId) {
-        return
-      }
-
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume()
-      }
-
-      const utterance = buildUtterance()
       isSpeaking.value = true
-
-      try {
-        window.speechSynthesis.speak(utterance)
-
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume()
-        }
-      } catch {
-        isSpeaking.value = false
-
-        if (isLikelyBrokenOemBrowser()) {
-          markSpeechIssue('oem-browser')
-        }
-      }
+      window.speechSynthesis.speak(utterance)
     }
 
-    const wasBusy = window.speechSynthesis.speaking || window.speechSynthesis.pending
+    const voices = window.speechSynthesis.getVoices()
 
-    if (wasBusy && !needsIOSRetry) {
-      window.speechSynthesis.cancel()
-      window.setTimeout(runSpeak, 80)
-      return true
-    }
-
-    // On iOS first speak: queue the word in the same gesture, then retry once
-    // if WebKit swallowed the first utterance (very common on first flip).
-    if (needsIOSRetry) {
-      if (window.speechSynthesis.pending || window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel()
-      }
-
-      runSpeak()
-
-      window.setTimeout(() => {
-        if (requestId !== speakRequestId || hasStarted) {
-          return
-        }
-
-        window.speechSynthesis.cancel()
-        runSpeak()
-      }, 180)
-
+    if (!voices.length) {
+      voicesChangedHandler = runSpeak
+      window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler)
+      window.speechSynthesis.getVoices()
       return true
     }
 
@@ -263,32 +110,14 @@ export const useSpeechSynthesis = () => {
     return true
   }
 
-  onMounted(() => {
-    if (!import.meta.client || !isSupported.value) {
-      if (import.meta.client) {
-        markSpeechIssue('unsupported')
-      }
-      return
-    }
-
-    ensureVoicesListener()
-
-    if (isLikelyBrokenOemBrowser() && !refreshVoices().length) {
-      markSpeechIssue('oem-browser')
-    }
-  })
-
   onBeforeUnmount(() => {
     stopSpeaking()
-    clearVoicesHandler()
   })
 
   return {
     isSupported,
     isSpeaking,
-    speechIssue,
     speak,
     stopSpeaking,
-    unlockSpeech,
   }
 }
