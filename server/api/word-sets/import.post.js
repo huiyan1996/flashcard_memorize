@@ -9,20 +9,12 @@ import {
 } from '../../utils/parse-word-file'
 import { serializeWordSet, toObjectId } from '../../utils/word-set'
 
-const getUploadErrorMessage = (error) => {
-  if (!error) {
-    return 'Failed to import the uploaded file.'
+const readFormText = (part) => {
+  if (!part?.data) {
+    return ''
   }
 
-  if (error.statusMessage && error.statusMessage !== 'Server Error') {
-    return error.statusMessage
-  }
-
-  if (error.message && error.message !== 'Server Error') {
-    return error.message
-  }
-
-  return 'Failed to import the uploaded file.'
+  return Buffer.from(part.data).toString('utf8').trim()
 }
 
 export default defineEventHandler(async (event) => {
@@ -44,9 +36,10 @@ export default defineEventHandler(async (event) => {
     try {
       formData = await readMultipartFormData(event)
     } catch (error) {
+      console.error('[word-sets/import] multipart failed', error)
       throw createError({
         statusCode: 400,
-        statusMessage: 'Could not read the uploaded file. Try again or rename the file to English characters.',
+        statusMessage: 'Could not read the uploaded file. Please try again.',
         data: {
           cause: error?.message || 'multipart parse failed',
         },
@@ -60,8 +53,9 @@ export default defineEventHandler(async (event) => {
       })
     }
 
-    const filePart = formData.find((part) => part.name === 'file' && part.data)
+    const filePart = formData.find((part) => part.name === 'file' && part.data?.length)
     const titlePart = formData.find((part) => part.name === 'title')
+    const fileNamePart = formData.find((part) => part.name === 'fileName')
 
     if (!filePart) {
       throw createError({
@@ -71,17 +65,20 @@ export default defineEventHandler(async (event) => {
     }
 
     const mimeType = filePart.type || ''
-    const importedFileName = resolveImportFileName(filePart.filename || '', mimeType, filePart.data)
+    // Prefer the UTF-8 text field from the client. Multipart Content-Disposition
+    // filenames are often corrupted for non-English characters.
+    const originalFileName = readFormText(fileNamePart) || filePart.filename || ''
+    const importedFileName = resolveImportFileName(originalFileName, mimeType, filePart.data)
 
-    if (!isSupportedImportFile(filePart.filename || '', mimeType, filePart.data)) {
+    if (!isSupportedImportFile(originalFileName, mimeType, filePart.data)) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Only CSV and Excel files (.csv, .xlsx, .xls) are supported.',
       })
     }
 
-    const words = parseWordRowsFromBuffer(filePart.data, importedFileName)
-    const customTitle = titlePart?.data ? Buffer.from(titlePart.data).toString('utf8').trim() : ''
+    const words = parseWordRowsFromBuffer(filePart.data, importedFileName, mimeType)
+    const customTitle = readFormText(titlePart)
     const title = (customTitle || getTitleFromFileName(importedFileName)).slice(0, 200)
 
     const wordSet = await WordSet.create({
@@ -101,11 +98,14 @@ export default defineEventHandler(async (event) => {
       throw error
     }
 
-    console.error('[word-sets/import]', error)
+    console.error('[word-sets/import] unexpected error', error)
 
     throw createError({
       statusCode: 500,
-      statusMessage: getUploadErrorMessage(error),
+      statusMessage: error?.message || 'Failed to import the uploaded file.',
+      data: {
+        cause: error?.stack || error?.message || 'unknown',
+      },
     })
   }
 })

@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import * as XLSXNamespace from 'xlsx'
 
-const XLSX = XLSXNamespace.default || XLSXNamespace
+const XLSX = XLSXNamespace?.default || XLSXNamespace
 
 const HEADER_WORDS = new Set([
   'word',
@@ -100,7 +100,105 @@ const decodeCsvText = (data) => {
   return Buffer.from(bytes).toString('utf8')
 }
 
+/**
+ * RFC 4180-ish CSV parser that supports quoted commas and multiline fields.
+ */
+export const parseCsvRows = (text = '') => {
+  const rows = []
+  let row = []
+  let field = ''
+  let inQuotes = false
+
+  const pushField = () => {
+    row.push(field)
+    field = ''
+  }
+
+  const pushRow = () => {
+    const hasContent = row.some((value) => String(value).trim() !== '')
+
+    if (hasContent) {
+      rows.push(row)
+    }
+
+    row = []
+  }
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    const next = text[index + 1]
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (next === '"') {
+          field += '"'
+          index += 1
+        } else {
+          inQuotes = false
+        }
+        continue
+      }
+
+      field += char
+      continue
+    }
+
+    if (char === '"') {
+      inQuotes = true
+      continue
+    }
+
+    if (char === ',') {
+      pushField()
+      continue
+    }
+
+    if (char === '\n') {
+      pushField()
+      pushRow()
+      continue
+    }
+
+    if (char === '\r') {
+      continue
+    }
+
+    field += char
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    pushField()
+    pushRow()
+  }
+
+  return rows
+}
+
+const looksLikeCsvText = (buffer) => {
+  const data = toUint8Array(buffer)
+
+  if (!data.length || looksLikeXlsx(data) || looksLikeXls(data)) {
+    return false
+  }
+
+  const sample = decodeCsvText(data.subarray(0, Math.min(data.length, 4096)))
+
+  return /[,;\t]/.test(sample) && /\S/.test(sample)
+}
+
 export const detectImportExtension = (fileName = '', mimeType = '', buffer) => {
+  if (buffer) {
+    const data = toUint8Array(buffer)
+
+    if (looksLikeXlsx(data)) {
+      return 'xlsx'
+    }
+
+    if (looksLikeXls(data)) {
+      return 'xls'
+    }
+  }
+
   const matchedExtension = String(fileName).match(/\.(csv|xlsx|xls)$/i)?.[1]
 
   if (matchedExtension) {
@@ -121,16 +219,8 @@ export const detectImportExtension = (fileName = '', mimeType = '', buffer) => {
     return 'csv'
   }
 
-  if (buffer) {
-    const data = toUint8Array(buffer)
-
-    if (looksLikeXlsx(data)) {
-      return 'xlsx'
-    }
-
-    if (looksLikeXls(data)) {
-      return 'xls'
-    }
+  if (buffer && looksLikeCsvText(buffer)) {
+    return 'csv'
   }
 
   return ''
@@ -138,52 +228,30 @@ export const detectImportExtension = (fileName = '', mimeType = '', buffer) => {
 
 export const resolveImportFileName = (fileName = '', mimeType = '', buffer) => {
   const baseName = String(fileName).split(/[/\\]/).pop()?.trim() || ''
+  const extension = detectImportExtension(baseName, mimeType, buffer) || 'csv'
 
   if (/\.(csv|xlsx|xls)$/i.test(baseName)) {
     return baseName
   }
 
-  const extension = detectImportExtension(baseName, mimeType, buffer) || 'csv'
-  const safeBase = baseName || 'import'
-
-  return `${safeBase}.${extension}`
-}
-
-const readWorkbook = (buffer, fileName = '') => {
-  const data = toUint8Array(buffer)
-  const isCsv = /\.csv$/i.test(fileName)
-
-  if (isCsv) {
-    const csvText = decodeCsvText(data)
-
-    return XLSX.read(csvText, {
-      type: 'string',
-      raw: false,
-      cellDates: true,
-    })
+  if (baseName) {
+    return `${baseName}.${extension}`
   }
 
-  return XLSX.read(data, {
+  return `import.${extension}`
+}
+
+const rowsFromExcelBuffer = (buffer) => {
+  if (!XLSX || typeof XLSX.read !== 'function') {
+    throw new Error('Excel parser is unavailable on the server.')
+  }
+
+  const data = toUint8Array(buffer)
+  const workbook = XLSX.read(data, {
     type: 'array',
     raw: false,
     cellDates: true,
   })
-}
-
-export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
-  let workbook
-
-  try {
-    workbook = readWorkbook(buffer, fileName)
-  } catch (error) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Could not read ${fileName || 'the uploaded file'}. Make sure it is a valid CSV or Excel file.`,
-      data: {
-        cause: error?.message || 'Unknown parse error',
-      },
-    })
-  }
 
   const firstSheetName = workbook.SheetNames?.[0]
 
@@ -194,14 +262,15 @@ export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
     })
   }
 
-  const sheet = workbook.Sheets[firstSheetName]
-  const rows = XLSX.utils.sheet_to_json(sheet, {
+  return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {
     header: 1,
     defval: '',
     blankrows: false,
     raw: false,
   })
+}
 
+const normalizeWordRows = (rows, fileName = '') => {
   const words = []
 
   for (const row of rows) {
@@ -242,6 +311,32 @@ export const parseWordRowsFromBuffer = (buffer, fileName = '') => {
   return words
 }
 
+export const parseWordRowsFromBuffer = (buffer, fileName = '', mimeType = '') => {
+  const extension = detectImportExtension(fileName, mimeType, buffer)
+  const isCsv = extension === 'csv' || (!extension && looksLikeCsvText(buffer))
+
+  try {
+    if (isCsv) {
+      const csvText = decodeCsvText(toUint8Array(buffer))
+      return normalizeWordRows(parseCsvRows(csvText), fileName)
+    }
+
+    return normalizeWordRows(rowsFromExcelBuffer(buffer), fileName)
+  } catch (error) {
+    if (error?.statusCode) {
+      throw error
+    }
+
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Could not read ${fileName || 'the uploaded file'}. Make sure it is a valid CSV or Excel file.`,
+      data: {
+        cause: error?.message || 'Unknown parse error',
+      },
+    })
+  }
+}
+
 export const getTitleFromFileName = (fileName = '') => {
   const baseName = String(fileName).split(/[/\\]/).pop() || 'Untitled word set'
   const withoutExtension = baseName.replace(/\.(csv|xlsx|xls)$/i, '').trim()
@@ -251,21 +346,5 @@ export const getTitleFromFileName = (fileName = '') => {
 }
 
 export const isSupportedImportFile = (fileName = '', mimeType = '', buffer) => {
-  if (/\.(csv|xlsx|xls)$/i.test(fileName)) {
-    return true
-  }
-
-  const normalizedMime = String(mimeType || '').toLowerCase()
-
-  if (EXCEL_MIME_TYPES.has(normalizedMime) || CSV_MIME_TYPES.has(normalizedMime)) {
-    return true
-  }
-
-  if (!buffer) {
-    return false
-  }
-
-  const data = toUint8Array(buffer)
-
-  return looksLikeXlsx(data) || looksLikeXls(data)
+  return Boolean(detectImportExtension(fileName, mimeType, buffer))
 }

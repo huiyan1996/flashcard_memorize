@@ -719,8 +719,16 @@ const handleImportSubmit = async () => {
   successMessage.value = ''
 
   try {
+    const originalName = importForm.file.name || importForm.fileName || 'import.csv'
+    const extensionMatch = originalName.match(/\.(csv|xlsx|xls)$/i)
+    const safeUploadName = extensionMatch
+      ? `upload.${extensionMatch[1].toLowerCase()}`
+      : 'upload.csv'
+
     const formData = new FormData()
-    formData.append('file', importForm.file, importForm.file.name || 'import.csv')
+    // Keep multipart filename ASCII-safe; send the real Unicode name separately.
+    formData.append('file', importForm.file, safeUploadName)
+    formData.append('fileName', originalName)
 
     const nextTitle = importForm.title.trim()
 
@@ -728,24 +736,28 @@ const handleImportSubmit = async () => {
       formData.append('title', nextTitle)
     }
 
-    const response = await $fetch('/api/word-sets/import', {
+    const response = await fetch('/api/word-sets/import', {
       method: 'POST',
       body: formData,
+      credentials: 'same-origin',
     })
+
+    const payload = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      const details = payload?.statusMessage || payload?.message || payload?.data?.cause
+      throw new Error(details || `Import failed (${response.status})`)
+    }
+
+    if (!payload?.wordSet?.id) {
+      throw new Error('Import succeeded but no word set was returned.')
+    }
 
     isImportModalOpen.value = false
     resetImportForm()
-    await router.push(`/word-sets/${response.wordSet.id}`)
+    await router.push(`/word-sets/${payload.wordSet.id}`)
   } catch (error) {
-    const statusMessage = error?.data?.statusMessage
-    const message = error?.data?.message || error?.statusMessage || error?.message
-    const isGenericServerError = !statusMessage || statusMessage === 'Server Error'
-
-    importModalErrorMessage.value = isGenericServerError
-      ? (message && message !== 'Server Error'
-        ? message
-        : 'Import failed. Please try again. If it keeps failing, rename the file to English characters and retry.')
-      : statusMessage
+    importModalErrorMessage.value = error?.message || 'Failed to import file.'
   } finally {
     isImporting.value = false
   }
