@@ -7,6 +7,17 @@ const isIOSDevice = () => {
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
+const isLikelyBrokenOemBrowser = () => {
+  if (!import.meta.client) {
+    return false
+  }
+
+  const ua = navigator.userAgent || ''
+
+  // Vivo / iQOO / some OEM browsers advertise speechSynthesis but never play audio.
+  return /VivoBrowser|IQOOBrowser|HeyTapBrowser|OPPOBrowser|HuaweiBrowser|MiuiBrowser/i.test(ua)
+}
+
 export const useSpeechSynthesis = () => {
   const isSupported = computed(() => {
     if (!import.meta.client) {
@@ -17,11 +28,20 @@ export const useSpeechSynthesis = () => {
   })
 
   const isSpeaking = ref(false)
+  const speechIssue = ref('')
   let speakRequestId = 0
   let voicesChangedHandler = null
   let isUnlocked = false
   let hasSpokenSuccessfully = false
   let cachedVoices = []
+  let startWatchTimer = null
+
+  const clearStartWatch = () => {
+    if (startWatchTimer) {
+      window.clearTimeout(startWatchTimer)
+      startWatchTimer = null
+    }
+  }
 
   const clearVoicesHandler = () => {
     if (!import.meta.client || !voicesChangedHandler) {
@@ -48,10 +68,18 @@ export const useSpeechSynthesis = () => {
 
     voicesChangedHandler = () => {
       refreshVoices()
+
+      if (cachedVoices.length && speechIssue.value === 'no-voices') {
+        speechIssue.value = ''
+      }
     }
 
     window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler)
     refreshVoices()
+  }
+
+  const markSpeechIssue = (code) => {
+    speechIssue.value = code
   }
 
   /**
@@ -86,6 +114,7 @@ export const useSpeechSynthesis = () => {
 
   const stopSpeaking = () => {
     speakRequestId += 1
+    clearStartWatch()
 
     if (!import.meta.client || !isSupported.value) {
       isSpeaking.value = false
@@ -114,6 +143,7 @@ export const useSpeechSynthesis = () => {
 
   const speak = (text, lang = '') => {
     if (!import.meta.client || !isSupported.value) {
+      markSpeechIssue('unsupported')
       return false
     }
 
@@ -130,9 +160,15 @@ export const useSpeechSynthesis = () => {
     ensureVoicesListener()
     refreshVoices()
 
+    // OEM browsers (e.g. Vivo) often expose the API with zero usable voices.
+    if (!cachedVoices.length && isLikelyBrokenOemBrowser()) {
+      markSpeechIssue('oem-browser')
+    }
+
     speakRequestId += 1
     const requestId = speakRequestId
     let hasStarted = false
+    clearStartWatch()
 
     const buildUtterance = () => {
       const utterance = new SpeechSynthesisUtterance(nextText)
@@ -141,7 +177,8 @@ export const useSpeechSynthesis = () => {
         utterance.lang = lang
 
         // Setting .voice on iOS before voices settle often kills the first speak.
-        if (!ios) {
+        // On broken OEM browsers, also prefer lang-only.
+        if (!ios && !isLikelyBrokenOemBrowser()) {
           const voice = pickVoice(lang)
 
           if (voice) {
@@ -157,6 +194,8 @@ export const useSpeechSynthesis = () => {
 
         hasStarted = true
         hasSpokenSuccessfully = true
+        speechIssue.value = ''
+        clearStartWatch()
         isSpeaking.value = true
       }
 
@@ -169,6 +208,7 @@ export const useSpeechSynthesis = () => {
       utterance.onerror = () => {
         if (requestId === speakRequestId && !hasStarted) {
           isSpeaking.value = false
+          markSpeechIssue(isLikelyBrokenOemBrowser() ? 'oem-browser' : 'failed')
         }
       }
 
@@ -195,6 +235,7 @@ export const useSpeechSynthesis = () => {
         }
       } catch {
         isSpeaking.value = false
+        markSpeechIssue('failed')
       }
     }
 
@@ -206,10 +247,7 @@ export const useSpeechSynthesis = () => {
       return true
     }
 
-    // On iOS first speak: queue the word in the same gesture, then retry once
-    // if WebKit swallowed the first utterance (very common on first flip).
     if (needsIOSRetry) {
-      // Clear any near-silent unlock prime without waiting a full tick when possible.
       if (window.speechSynthesis.pending || window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel()
       }
@@ -229,25 +267,49 @@ export const useSpeechSynthesis = () => {
     }
 
     runSpeak()
+
+    // If nothing starts, the browser likely has a stub/broken TTS implementation.
+    startWatchTimer = window.setTimeout(() => {
+      if (requestId !== speakRequestId || hasStarted || hasSpokenSuccessfully) {
+        return
+      }
+
+      isSpeaking.value = false
+      markSpeechIssue(
+        isLikelyBrokenOemBrowser() || !cachedVoices.length
+          ? 'oem-browser'
+          : 'failed',
+      )
+    }, 900)
+
     return true
   }
 
   onMounted(() => {
     if (!import.meta.client || !isSupported.value) {
+      if (import.meta.client) {
+        markSpeechIssue('unsupported')
+      }
       return
     }
 
     ensureVoicesListener()
+
+    if (isLikelyBrokenOemBrowser() && !refreshVoices().length) {
+      markSpeechIssue('oem-browser')
+    }
   })
 
   onBeforeUnmount(() => {
     stopSpeaking()
     clearVoicesHandler()
+    clearStartWatch()
   })
 
   return {
     isSupported,
     isSpeaking,
+    speechIssue,
     speak,
     stopSpeaking,
     unlockSpeech,

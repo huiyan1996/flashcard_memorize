@@ -152,11 +152,11 @@
             </div>
 
             <p
-              v-if="!wordSet.speechLanguage"
+              v-if="speechHint"
               class="mb-4 text-center text-sm text-amber-700"
               role="status"
             >
-              {{ t('flashcard.setSpeechLanguage') }}
+              {{ speechHint }}
             </p>
 
             <div class="mt-auto grid gap-3 pb-2 sm:grid-cols-3">
@@ -291,7 +291,7 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
-const { isSupported, isSpeaking, speak, stopSpeaking, unlockSpeech } = useSpeechSynthesis()
+const { isSupported, isSpeaking, speechIssue, speak, stopSpeaking, unlockSpeech } = useSpeechSynthesis()
 const { t } = useLocale()
 const wordSet = ref(null)
 const queue = ref([])
@@ -318,6 +318,25 @@ const canSpeak = computed(() => (
   && Boolean(wordSet.value?.speechLanguage)
   && Boolean(currentCard.value?.word)
 ))
+const speechHint = computed(() => {
+  if (!wordSet.value?.speechLanguage) {
+    return t('flashcard.setSpeechLanguage')
+  }
+
+  if (!isSupported.value || speechIssue.value === 'unsupported') {
+    return t('flashcard.speechUnsupported')
+  }
+
+  if (speechIssue.value === 'oem-browser') {
+    return t('flashcard.speechOemBrowser')
+  }
+
+  if (speechIssue.value === 'failed') {
+    return t('flashcard.speechFailed')
+  }
+
+  return ''
+})
 const currentPosition = computed(() => {
   if (!queue.value.length) {
     return 0
