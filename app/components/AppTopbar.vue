@@ -1,10 +1,10 @@
 <template>
   <header class="border-b border-slate-200 bg-white">
-    <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
       <NuxtLink
         to="/dashboard"
         class="text-lg font-semibold tracking-tight text-slate-900"
-        aria-label="Go to dashboard"
+        :aria-label="t('nav.goDashboard')"
         @click="handleCloseMenu"
       >
         {{ appName }}
@@ -15,23 +15,24 @@
           to="/dashboard"
           class="text-sm font-medium text-slate-600 transition hover:text-slate-900"
         >
-          Dashboard
+          {{ t('nav.dashboard') }}
         </NuxtLink>
         <NuxtLink
           to="/listing"
           class="text-sm font-medium text-slate-600 transition hover:text-slate-900"
         >
-          My sets
+          {{ t('nav.mySets') }}
         </NuxtLink>
         <NuxtLink
           to="/community"
           class="text-sm font-medium text-slate-600 transition hover:text-slate-900"
         >
-          Community
+          {{ t('nav.community') }}
         </NuxtLink>
       </nav>
 
-      <div class="hidden items-center gap-4 md:flex">
+      <div class="hidden items-center gap-3 md:flex">
+        <LocaleSwitcher />
         <p
           v-if="user"
           class="text-sm text-slate-600"
@@ -41,41 +42,44 @@
         <button
           type="button"
           class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-          aria-label="Log out"
+          :aria-label="t('nav.logout')"
           tabindex="0"
           @click="handleLogout"
           @keydown.enter="handleLogout"
         >
-          Log out
+          {{ t('nav.logout') }}
         </button>
       </div>
 
-      <button
-        type="button"
-        class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 md:hidden"
-        :aria-expanded="isMenuOpen"
-        aria-controls="mobile-nav-sidebar"
-        :aria-label="isMenuOpen ? 'Close menu' : 'Open menu'"
-        tabindex="0"
-        @click="handleToggleMenu"
-        @keydown.enter="handleToggleMenu"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke-width="1.5"
-          stroke="currentColor"
-          class="h-6 w-6"
-          aria-hidden="true"
+      <div class="flex items-center gap-2 md:hidden">
+        <LocaleSwitcher />
+        <button
+          type="button"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+          :aria-expanded="isMenuOpen"
+          aria-controls="mobile-nav-sidebar"
+          :aria-label="isMenuOpen ? t('nav.closeMenu') : t('nav.openMenu')"
+          tabindex="0"
+          @click="handleToggleMenu"
+          @keydown.enter="handleToggleMenu"
         >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-          />
-        </svg>
-      </button>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="h-6 w-6"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+            />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <Teleport to="body">
@@ -95,16 +99,16 @@
           class="absolute inset-y-0 right-0 flex w-72 max-w-[85vw] flex-col bg-white shadow-xl"
           role="dialog"
           aria-modal="true"
-          aria-label="Navigation menu"
+          :aria-label="t('nav.menu')"
         >
           <div class="flex h-16 items-center justify-between border-b border-slate-200 px-4">
             <p class="text-lg font-semibold text-slate-900">
-              Menu
+              {{ t('nav.menu') }}
             </p>
             <button
               type="button"
               class="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              aria-label="Close menu"
+              :aria-label="t('nav.closeMenu')"
               tabindex="0"
               @click="handleCloseMenu"
               @keydown.enter="handleCloseMenu"
@@ -140,21 +144,21 @@
               class="rounded-lg px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               @click="handleCloseMenu"
             >
-              Dashboard
+              {{ t('nav.dashboard') }}
             </NuxtLink>
             <NuxtLink
               to="/listing"
               class="rounded-lg px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               @click="handleCloseMenu"
             >
-              My sets
+              {{ t('nav.mySets') }}
             </NuxtLink>
             <NuxtLink
               to="/community"
               class="rounded-lg px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               @click="handleCloseMenu"
             >
-              Community
+              {{ t('nav.community') }}
             </NuxtLink>
           </nav>
 
@@ -162,12 +166,12 @@
             <button
               type="button"
               class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              aria-label="Log out"
+              :aria-label="t('nav.logout')"
               tabindex="0"
               @click="handleLogout"
               @keydown.enter="handleLogout"
             >
-              Log out
+              {{ t('nav.logout') }}
             </button>
           </div>
         </aside>
@@ -181,6 +185,7 @@ const config = useRuntimeConfig()
 const route = useRoute()
 const appName = config.public.appName
 const { user, logout } = useAuth()
+const { t } = useLocale()
 const isMenuOpen = ref(false)
 
 const handleToggleMenu = () => {

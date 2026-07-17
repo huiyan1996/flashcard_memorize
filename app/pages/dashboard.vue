@@ -4,11 +4,10 @@
       <div class="flex flex-col items-start gap-8 sm:flex-row sm:items-center sm:justify-between">
         <div class="max-w-2xl">
           <h1 class="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-            Welcome back, {{ displayName }}!
+            {{ t('dashboard.welcome', { name: displayName }) }}
           </h1>
           <p class="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg">
-            FlashMem helps you memorize vocabulary with flashcards. Import word lists,
-            practice with flip cards, track progress, and share public sets with the community.
+            {{ t('dashboard.intro') }}
           </p>
         </div>
 
@@ -38,7 +37,7 @@
       <NuxtLink
         to="/listing"
         class="group rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm transition hover:border-indigo-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        aria-label="Go to my word sets"
+        :aria-label="t('dashboard.goMySets')"
         tabindex="0"
       >
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
@@ -59,10 +58,10 @@
           </svg>
         </div>
         <h2 class="mt-5 text-xl font-semibold text-slate-900">
-          My Sets
+          {{ t('dashboard.mySetsTitle') }}
         </h2>
         <p class="mt-2 text-sm leading-relaxed text-slate-600">
-          Manage your flashcard decks, import word lists, and review your personalized collections.
+          {{ t('dashboard.mySetsDesc') }}
         </p>
         <div class="mt-6 flex justify-center text-indigo-600 transition group-hover:translate-x-1">
           <svg
@@ -86,7 +85,7 @@
       <NuxtLink
         to="/community"
         class="group rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm transition hover:border-emerald-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-        aria-label="Browse community word sets"
+        :aria-label="t('dashboard.goCommunity')"
         tabindex="0"
       >
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
@@ -107,10 +106,10 @@
           </svg>
         </div>
         <h2 class="mt-5 text-xl font-semibold text-slate-900">
-          Community
+          {{ t('dashboard.communityTitle') }}
         </h2>
         <p class="mt-2 text-sm leading-relaxed text-slate-600">
-          Explore shared decks from other learners and import public word sets into your list.
+          {{ t('dashboard.communityDesc') }}
         </p>
         <div class="mt-6 flex justify-center text-emerald-600 transition group-hover:translate-x-1">
           <svg
@@ -141,9 +140,10 @@ definePageMeta({
 })
 
 const { user } = useAuth()
+const { t } = useLocale()
 
 const displayName = computed(() => {
   const name = String(user.value?.name || '').trim()
-  return name || 'there'
+  return name || t('common.there')
 })
 </script>

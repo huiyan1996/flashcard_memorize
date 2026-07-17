@@ -1,15 +1,19 @@
 <template>
   <div class="flex min-h-screen items-center justify-center px-4 py-12">
+    <div class="absolute right-4 top-4 sm:right-6 sm:top-6">
+      <LocaleSwitcher />
+    </div>
+
     <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
       <div class="mb-8 text-center">
         <p class="text-sm font-medium uppercase tracking-wide text-indigo-600">
           {{ appName }}
         </p>
         <h1 class="mt-2 text-2xl font-semibold text-slate-900">
-          Welcome back
+          {{ t('auth.welcomeBack') }}
         </h1>
         <p class="mt-2 text-sm text-slate-600">
-          Sign in to continue to your dashboard.
+          {{ t('auth.signInContinue') }}
         </p>
       </div>
 
@@ -22,7 +26,7 @@
             for="email"
             class="mb-2 block text-sm font-medium text-slate-700"
           >
-            Email
+            {{ t('auth.email') }}
           </label>
           <input
             id="email"
@@ -32,7 +36,7 @@
             required
             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
             placeholder="you@example.com"
-            aria-label="Email"
+            :aria-label="t('auth.email')"
           >
         </div>
 
@@ -41,7 +45,7 @@
             for="password"
             class="mb-2 block text-sm font-medium text-slate-700"
           >
-            Password
+            {{ t('auth.password') }}
           </label>
           <input
             id="password"
@@ -52,7 +56,7 @@
             minlength="6"
             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
             placeholder="••••••••"
-            aria-label="Password"
+            :aria-label="t('auth.password')"
           >
         </div>
 
@@ -68,19 +72,19 @@
           type="submit"
           class="flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="isSubmitting"
-          aria-label="Sign in"
+          :aria-label="t('auth.signIn')"
         >
-          {{ isSubmitting ? 'Signing in...' : 'Sign in' }}
+          {{ isSubmitting ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
       </form>
 
       <p class="mt-6 text-center text-sm text-slate-600">
-        Don't have an account?
+        {{ t('auth.noAccount') }}
         <NuxtLink
           to="/register"
           class="font-medium text-indigo-600 hover:text-indigo-500"
         >
-          Create one
+          {{ t('auth.createOne') }}
         </NuxtLink>
       </p>
     </div>
@@ -96,6 +100,7 @@ definePageMeta({
 const config = useRuntimeConfig()
 const appName = config.public.appName
 const { login } = useAuth()
+const { t } = useLocale()
 
 const form = reactive({
   email: '',
@@ -121,7 +126,7 @@ const handleSubmit = async () => {
 
     await navigateTo('/dashboard')
   } catch (error) {
-    errorMessage.value = error?.data?.statusMessage || 'Unable to sign in. Please try again.'
+    errorMessage.value = error?.data?.statusMessage || t('auth.signInFailed')
   } finally {
     isSubmitting.value = false
   }

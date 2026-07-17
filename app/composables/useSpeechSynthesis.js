@@ -1,3 +1,12 @@
+const isIOSDevice = () => {
+  if (!import.meta.client) {
+    return false
+  }
+
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 export const useSpeechSynthesis = () => {
   const isSupported = computed(() => {
     if (!import.meta.client) {
@@ -11,6 +20,7 @@ export const useSpeechSynthesis = () => {
   let speakRequestId = 0
   let voicesChangedHandler = null
   let isUnlocked = false
+  let hasSpokenSuccessfully = false
   let cachedVoices = []
 
   const clearVoicesHandler = () => {
@@ -45,9 +55,8 @@ export const useSpeechSynthesis = () => {
   }
 
   /**
-   * Mobile browsers (especially iOS Safari) need speech synthesis primed
-   * after a user gesture. Keep this lightweight — avoid cancel() here so a
-   * following speak() in the same tap is not dropped.
+   * Prime speech on the first user gesture. iOS Safari often swallows the first
+   * real utterance unless the engine has already been touched in-gesture.
    */
   const unlockSpeech = () => {
     if (!import.meta.client || !isSupported.value || isUnlocked) {
@@ -61,6 +70,14 @@ export const useSpeechSynthesis = () => {
     try {
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume()
+      }
+
+      if (isIOSDevice()) {
+        const prime = new SpeechSynthesisUtterance('\u200B')
+        prime.rate = 2
+        prime.pitch = 1
+        prime.volume = 0.01
+        window.speechSynthesis.speak(prime)
       }
     } catch {
       // Ignore unlock failures; later speak() may still work.
@@ -106,12 +123,57 @@ export const useSpeechSynthesis = () => {
       return false
     }
 
+    const ios = isIOSDevice()
+    const needsIOSRetry = ios && !hasSpokenSuccessfully
+
     unlockSpeech()
     ensureVoicesListener()
     refreshVoices()
 
     speakRequestId += 1
     const requestId = speakRequestId
+    let hasStarted = false
+
+    const buildUtterance = () => {
+      const utterance = new SpeechSynthesisUtterance(nextText)
+
+      if (lang) {
+        utterance.lang = lang
+
+        // Setting .voice on iOS before voices settle often kills the first speak.
+        if (!ios) {
+          const voice = pickVoice(lang)
+
+          if (voice) {
+            utterance.voice = voice
+          }
+        }
+      }
+
+      utterance.onstart = () => {
+        if (requestId !== speakRequestId) {
+          return
+        }
+
+        hasStarted = true
+        hasSpokenSuccessfully = true
+        isSpeaking.value = true
+      }
+
+      utterance.onend = () => {
+        if (requestId === speakRequestId) {
+          isSpeaking.value = false
+        }
+      }
+
+      utterance.onerror = () => {
+        if (requestId === speakRequestId && !hasStarted) {
+          isSpeaking.value = false
+        }
+      }
+
+      return utterance
+    }
 
     const runSpeak = () => {
       if (requestId !== speakRequestId) {
@@ -122,35 +184,7 @@ export const useSpeechSynthesis = () => {
         window.speechSynthesis.resume()
       }
 
-      const utterance = new SpeechSynthesisUtterance(nextText)
-
-      if (lang) {
-        utterance.lang = lang
-        const voice = pickVoice(lang)
-
-        if (voice) {
-          utterance.voice = voice
-        }
-      }
-
-      utterance.onstart = () => {
-        if (requestId === speakRequestId) {
-          isSpeaking.value = true
-        }
-      }
-
-      utterance.onend = () => {
-        if (requestId === speakRequestId) {
-          isSpeaking.value = false
-        }
-      }
-
-      utterance.onerror = () => {
-        if (requestId === speakRequestId) {
-          isSpeaking.value = false
-        }
-      }
-
+      const utterance = buildUtterance()
       isSpeaking.value = true
 
       try {
@@ -166,14 +200,34 @@ export const useSpeechSynthesis = () => {
 
     const wasBusy = window.speechSynthesis.speaking || window.speechSynthesis.pending
 
-    if (wasBusy) {
+    if (wasBusy && !needsIOSRetry) {
       window.speechSynthesis.cancel()
-      // cancel() + speak() in the same tick drops the first utterance on many phones.
       window.setTimeout(runSpeak, 80)
       return true
     }
 
-    // Speak in the same user-gesture turn so iOS allows audio.
+    // On iOS first speak: queue the word in the same gesture, then retry once
+    // if WebKit swallowed the first utterance (very common on first flip).
+    if (needsIOSRetry) {
+      // Clear any near-silent unlock prime without waiting a full tick when possible.
+      if (window.speechSynthesis.pending || window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel()
+      }
+
+      runSpeak()
+
+      window.setTimeout(() => {
+        if (requestId !== speakRequestId || hasStarted) {
+          return
+        }
+
+        window.speechSynthesis.cancel()
+        runSpeak()
+      }, 180)
+
+      return true
+    }
+
     runSpeak()
     return true
   }

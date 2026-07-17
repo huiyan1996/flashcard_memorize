@@ -1,15 +1,19 @@
 <template>
   <div class="flex min-h-screen items-center justify-center px-4 py-12">
+    <div class="absolute right-4 top-4 sm:right-6 sm:top-6">
+      <LocaleSwitcher />
+    </div>
+
     <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
       <div class="mb-8 text-center">
         <p class="text-sm font-medium uppercase tracking-wide text-indigo-600">
           {{ appName }}
         </p>
         <h1 class="mt-2 text-2xl font-semibold text-slate-900">
-          Create your account
+          {{ t('auth.createAccount') }}
         </h1>
         <p class="mt-2 text-sm text-slate-600">
-          Register to start using FlashMem.
+          {{ t('auth.registerHint') }}
         </p>
       </div>
 
@@ -22,7 +26,7 @@
             for="name"
             class="mb-2 block text-sm font-medium text-slate-700"
           >
-            Name
+            {{ t('auth.name') }}
           </label>
           <input
             id="name"
@@ -32,8 +36,8 @@
             required
             minlength="2"
             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-            placeholder="Your name"
-            aria-label="Name"
+            :placeholder="t('auth.namePlaceholder')"
+            :aria-label="t('auth.name')"
           >
         </div>
 
@@ -42,7 +46,7 @@
             for="email"
             class="mb-2 block text-sm font-medium text-slate-700"
           >
-            Email
+            {{ t('auth.email') }}
           </label>
           <input
             id="email"
@@ -52,7 +56,7 @@
             required
             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
             placeholder="you@example.com"
-            aria-label="Email"
+            :aria-label="t('auth.email')"
           >
         </div>
 
@@ -61,7 +65,7 @@
             for="password"
             class="mb-2 block text-sm font-medium text-slate-700"
           >
-            Password
+            {{ t('auth.password') }}
           </label>
           <input
             id="password"
@@ -71,8 +75,8 @@
             required
             minlength="6"
             class="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
-            placeholder="At least 6 characters"
-            aria-label="Password"
+            :placeholder="t('auth.passwordPlaceholder')"
+            :aria-label="t('auth.password')"
           >
         </div>
 
@@ -88,19 +92,19 @@
           type="submit"
           class="flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="isSubmitting"
-          aria-label="Create account"
+          :aria-label="t('auth.createAccountButton')"
         >
-          {{ isSubmitting ? 'Creating account...' : 'Create account' }}
+          {{ isSubmitting ? t('auth.creatingAccount') : t('auth.createAccountButton') }}
         </button>
       </form>
 
       <p class="mt-6 text-center text-sm text-slate-600">
-        Already have an account?
+        {{ t('auth.haveAccount') }}
         <NuxtLink
           to="/login"
           class="font-medium text-indigo-600 hover:text-indigo-500"
         >
-          Sign in
+          {{ t('auth.signIn') }}
         </NuxtLink>
       </p>
     </div>
@@ -116,6 +120,7 @@ definePageMeta({
 const config = useRuntimeConfig()
 const appName = config.public.appName
 const { register } = useAuth()
+const { t } = useLocale()
 
 const form = reactive({
   name: '',
@@ -143,7 +148,7 @@ const handleSubmit = async () => {
 
     await navigateTo('/dashboard')
   } catch (error) {
-    errorMessage.value = error?.data?.statusMessage || 'Unable to create account. Please try again.'
+    errorMessage.value = error?.data?.statusMessage || t('auth.registerFailed')
   } finally {
     isSubmitting.value = false
   }

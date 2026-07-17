@@ -3,10 +3,10 @@
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-3xl font-semibold text-slate-900">
-          My word sets
+          {{ t('listing.title') }}
         </h1>
         <p class="mt-2 text-slate-600">
-          Import CSV or Excel files and manage your own word sets. Set visibility to public to share with others.
+          {{ t('listing.subtitle') }}
         </p>
       </div>
 
@@ -15,12 +15,12 @@
           type="button"
           class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           :disabled="isImporting"
-          aria-label="Import CSV or Excel file"
+          :aria-label="t('listing.importAria')"
           tabindex="0"
           @click="handleOpenImportModal"
           @keydown.enter="handleOpenImportModal"
         >
-          Import
+          {{ t('listing.import') }}
         </button>
       </div>
     </div>
@@ -45,7 +45,7 @@
       v-if="isLoading"
       class="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600"
     >
-      Loading...
+      {{ t('common.loading') }}
     </div>
 
     <div
@@ -53,7 +53,7 @@
       class="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"
     >
       <p class="text-slate-600">
-        No word sets yet. Import a CSV or Excel file to get started.
+        {{ t('listing.empty') }}
       </p>
     </div>
 
@@ -378,10 +378,10 @@
           :id="importModalTitleId"
           class="text-lg font-semibold text-slate-900"
         >
-          Import word set
+          {{ t('listing.importModalTitle') }}
         </h2>
         <p class="mt-1 text-sm text-slate-600">
-          Upload a CSV or Excel file. You can optionally set a title for the new word set.
+          {{ t('listing.importModalHint') }}
         </p>
 
         <form
@@ -460,7 +460,7 @@
               aria-label="Upload and import file"
               tabindex="0"
             >
-              {{ isImporting ? 'Importing...' : 'Import file' }}
+              {{ isImporting ? t('listing.importing') : t('listing.importFile') }}
             </button>
           </div>
         </form>
@@ -561,6 +561,7 @@ definePageMeta({
 })
 
 const router = useRouter()
+const { t } = useLocale()
 const wordSets = ref([])
 const isLoading = ref(true)
 const isImporting = ref(false)
@@ -671,7 +672,7 @@ const handleImportFileChange = (event) => {
   if (!isSupportedImportFile(file)) {
     importForm.file = null
     importForm.fileName = ''
-    importModalErrorMessage.value = 'Please choose a CSV or Excel file (.csv, .xlsx, or .xls).'
+    importModalErrorMessage.value = t('listing.chooseFileType')
 
     if (fileInputRef.value) {
       fileInputRef.value.value = ''
@@ -693,7 +694,7 @@ const loadWordSets = async () => {
     const response = await $fetch('/api/word-sets')
     wordSets.value = response.wordSets
   } catch (error) {
-    errorMessage.value = error?.data?.statusMessage || 'Failed to load word sets.'
+    errorMessage.value = error?.data?.statusMessage || t('listing.loadFailed')
   } finally {
     isLoading.value = false
   }
@@ -723,7 +724,7 @@ const fileToBase64 = async (file) => {
 
 const handleImportSubmit = async () => {
   if (isImporting.value || !importForm.file) {
-    importModalErrorMessage.value = 'Please choose a CSV or Excel file.'
+    importModalErrorMessage.value = t('listing.chooseFile')
     return
   }
 

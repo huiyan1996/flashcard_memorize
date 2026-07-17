@@ -10,7 +10,7 @@
         aria-label="Back to my word sets"
         tabindex="0"
       >
-        ← Back
+        ← {{ t('flashcard.back') }}
       </NuxtLink>
 
       <p
@@ -79,6 +79,7 @@
               :aria-label="isFlipped ? 'Card answer shown' : 'Flip card to see word'"
               :tabindex="isFlipped ? -1 : 0"
               :disabled="isFlipped"
+              @pointerdown="handleCardPointerDown"
               @click="handleFlipCard"
               @keydown.enter="handleFlipCard"
             >
@@ -116,7 +117,7 @@
             v-if="!isFlipped"
             class="mb-6 text-center text-sm text-slate-500"
           >
-            Click the card to reveal the answer
+            {{ t('flashcard.flipHint') }}
           </p>
 
           <template v-else>
@@ -127,6 +128,7 @@
                 :disabled="!canSpeak || isSaving"
                 aria-label="Read word aloud"
                 tabindex="0"
+                @pointerdown="handleReadPointerDown"
                 @click="handleReadAloud"
                 @keydown.enter="handleReadAloud"
               >
@@ -145,7 +147,7 @@
                     d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A17.7 17.7 0 0 1 2.25 12c0-.993.074-1.97.217-2.926.234-.847 1.058-1.354 1.938-1.354H6.75Z"
                   />
                 </svg>
-                {{ isSpeaking ? 'Reading...' : 'Read' }}
+                {{ isSpeaking ? t('flashcard.reading') : t('flashcard.read') }}
               </button>
             </div>
 
@@ -154,7 +156,7 @@
               class="mb-4 text-center text-sm text-amber-700"
               role="status"
             >
-              Set a speech language on this word set to enable reading aloud.
+              {{ t('flashcard.setSpeechLanguage') }}
             </p>
 
             <div class="mt-auto grid gap-3 pb-2 sm:grid-cols-3">
@@ -167,29 +169,29 @@
                 @click="handleAnswer('forgot')"
                 @keydown.enter="handleAnswer('forgot')"
               >
-                Forgot
+                {{ t('flashcard.forgot') }}
               </button>
               <button
                 type="button"
                 class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="isSaving"
-                aria-label="Mark as hard"
+                :aria-label="t('flashcard.hard')"
                 tabindex="0"
                 @click="handleAnswer('hard')"
                 @keydown.enter="handleAnswer('hard')"
               >
-                Hard
+                {{ t('flashcard.hard') }}
               </button>
               <button
                 type="button"
                 class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="isSaving"
-                aria-label="Mark as yes"
+                :aria-label="t('flashcard.yes')"
                 tabindex="0"
                 @click="handleAnswer('yes')"
                 @keydown.enter="handleAnswer('yes')"
               >
-                Yes
+                {{ t('flashcard.yes') }}
               </button>
             </div>
           </template>
@@ -290,6 +292,7 @@ definePageMeta({
 const route = useRoute()
 const router = useRouter()
 const { isSupported, isSpeaking, speak, stopSpeaking, unlockSpeech } = useSpeechSynthesis()
+const { t } = useLocale()
 const wordSet = ref(null)
 const queue = ref([])
 const currentQueueIndex = ref(0)
@@ -303,6 +306,7 @@ const wasCompletedOnEntry = ref(false)
 const isCompletionModalOpen = ref(false)
 const hasShownCompletionModal = ref(false)
 const completionModalTitleId = 'flashcard-completion-modal-title'
+let lastReadAt = 0
 
 const handleUnlockSpeech = () => {
   unlockSpeech()
@@ -425,13 +429,38 @@ const handleFlipCard = () => {
   speakCurrentWord()
 }
 
+// iOS Safari ties audio permission to touchstart/pointerdown more reliably than click.
+const handleCardPointerDown = (event) => {
+  if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+    return
+  }
+
+  handleFlipCard()
+}
+
 const handleReadAloud = () => {
   if (!canSpeak.value || isSaving.value) {
     return
   }
 
+  // Touch fires pointerdown + click; ignore the duplicate.
+  const now = Date.now()
+
+  if (now - lastReadAt < 400) {
+    return
+  }
+
+  lastReadAt = now
   unlockSpeech()
   speakCurrentWord()
+}
+
+const handleReadPointerDown = (event) => {
+  if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+    return
+  }
+
+  handleReadAloud()
 }
 
 const handleAnswer = async (status) => {

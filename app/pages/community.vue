@@ -2,10 +2,10 @@
   <section>
     <div class="mb-6">
       <h1 class="text-3xl font-semibold text-slate-900">
-        Community word sets
+        {{ t('community.title') }}
       </h1>
       <p class="mt-2 text-slate-600">
-        Browse public word sets shared by other users and import them into your own list.
+        {{ t('community.subtitle') }}
       </p>
     </div>
 
@@ -29,7 +29,7 @@
       v-if="isLoading"
       class="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600"
     >
-      Loading...
+      {{ t('common.loading') }}
     </div>
 
     <div
@@ -37,7 +37,7 @@
       class="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"
     >
       <p class="text-slate-600">
-        No public word sets from other users yet.
+        {{ t('community.empty') }}
       </p>
     </div>
 
@@ -138,7 +138,7 @@
                     @click="handleImport(wordSet)"
                     @keydown.enter="handleImport(wordSet)"
                   >
-                    {{ importingId === wordSet.id ? 'Importing...' : 'Import' }}
+                    {{ importingId === wordSet.id ? t('community.importing') : t('community.import') }}
                   </button>
                 </div>
               </td>
@@ -245,7 +245,7 @@
               @click="handleImport(wordSet)"
               @keydown.enter="handleImport(wordSet)"
             >
-              {{ importingId === wordSet.id ? 'Importing...' : 'Import' }}
+              {{ importingId === wordSet.id ? t('community.importing') : t('community.import') }}
             </button>
           </div>
         </div>
@@ -261,6 +261,7 @@ definePageMeta({
 })
 
 const router = useRouter()
+const { t } = useLocale()
 const wordSets = ref([])
 const isLoading = ref(true)
 const importingId = ref('')
@@ -280,7 +281,7 @@ const loadPublicWordSets = async () => {
     const response = await $fetch('/api/community/word-sets')
     wordSets.value = response.wordSets
   } catch (error) {
-    errorMessage.value = error?.data?.statusMessage || 'Failed to load community word sets.'
+    errorMessage.value = error?.data?.statusMessage || t('community.loadFailed')
   } finally {
     isLoading.value = false
   }
@@ -310,7 +311,7 @@ const handleImport = async (wordSet) => {
 
     await router.push(`/word-sets/${response.wordSet.id}`)
   } catch (error) {
-    errorMessage.value = error?.data?.statusMessage || 'Failed to import word set.'
+    errorMessage.value = error?.data?.statusMessage || t('community.importFailed')
   } finally {
     importingId.value = ''
   }
