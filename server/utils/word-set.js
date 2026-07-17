@@ -42,6 +42,25 @@ export const normalizeSpeechLanguage = (language) => {
   return normalized
 }
 
+export const normalizeShowWordOnFront = (value) => {
+  if (typeof value === 'boolean') {
+    return value
+  }
+
+  if (value === 'true' || value === '1' || value === 1) {
+    return true
+  }
+
+  if (value === 'false' || value === '0' || value === 0 || value === '' || value == null) {
+    return false
+  }
+
+  throw createError({
+    statusCode: 400,
+    statusMessage: 'Show word on front must be a boolean.',
+  })
+}
+
 export const shuffleItems = (items = []) => {
   const shuffled = [...items]
 
@@ -102,6 +121,7 @@ export const serializeWordSet = (wordSet, {
     wordCount: wordSet.wordCount ?? wordSet.words?.length ?? 0,
     visibility: wordSet.visibility || 'private',
     flashcardOrder: wordSet.flashcardOrder || 'sequence',
+    showWordOnFront: Boolean(wordSet.showWordOnFront),
     speechLanguage: wordSet.speechLanguage || '',
     createdAt: wordSet.createdAt,
     updatedAt: wordSet.updatedAt,

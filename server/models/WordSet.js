@@ -59,6 +59,10 @@ const wordSetSchema = new mongoose.Schema(
       enum: ['sequence', 'random'],
       default: 'sequence',
     },
+    showWordOnFront: {
+      type: Boolean,
+      default: false,
+    },
     speechLanguage: {
       type: String,
       default: '',

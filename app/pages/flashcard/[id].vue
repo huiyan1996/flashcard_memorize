@@ -73,7 +73,7 @@
               type="button"
               class="flashcard w-full max-w-3xl"
               :class="{ 'pointer-events-none': isFlipped }"
-              :aria-label="isFlipped ? 'Card answer shown' : 'Flip card to see word'"
+              :aria-label="isFlipped ? 'Card answer shown' : 'Flip card to see answer'"
               :tabindex="isFlipped ? -1 : 0"
               :disabled="isFlipped"
               @click="handleFlipCard"
@@ -85,7 +85,7 @@
               >
                 <div class="front border border-slate-200 bg-white shadow-lg">
                   <h2 class="px-6 text-4xl font-semibold text-slate-900 sm:text-5xl">
-                    {{ currentCard.meaning }}
+                    {{ frontCardText }}
                   </h2>
                 </div>
 
@@ -116,80 +116,84 @@
             {{ t('flashcard.flipHint') }}
           </p>
 
-          <template v-else>
-            <div class="mb-6 flex justify-center">
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="!canSpeak || isSaving"
-                aria-label="Read word aloud"
-                tabindex="0"
-                @click="handleReadAloud"
-                @keydown.enter="handleReadAloud"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="h-5 w-5"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A17.7 17.7 0 0 1 2.25 12c0-.993.074-1.97.217-2.926.234-.847 1.058-1.354 1.938-1.354H6.75Z"
-                  />
-                </svg>
-                {{ isSpeaking ? t('flashcard.reading') : t('flashcard.read') }}
-              </button>
-            </div>
-
-            <p
-              v-if="!wordSet.speechLanguage"
-              class="mb-4 text-center text-sm text-amber-700"
-              role="status"
+          <div
+            v-if="showReadButton"
+            class="mb-6 flex justify-center"
+          >
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="!canSpeak || isSaving"
+              aria-label="Read word aloud"
+              tabindex="0"
+              @click="handleReadAloud"
+              @keydown.enter="handleReadAloud"
             >
-              {{ t('flashcard.setSpeechLanguage') }}
-            </p>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+                stroke="currentColor"
+                class="h-5 w-5"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A17.7 17.7 0 0 1 2.25 12c0-.993.074-1.97.217-2.926.234-.847 1.058-1.354 1.938-1.354H6.75Z"
+                />
+              </svg>
+              {{ isSpeaking ? t('flashcard.reading') : t('flashcard.read') }}
+            </button>
+          </div>
 
-            <div class="mt-auto grid gap-3 pb-2 sm:grid-cols-3">
-              <button
-                type="button"
-                class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="isSaving"
-                aria-label="Mark as forgot"
-                tabindex="0"
-                @click="handleAnswer('forgot')"
-                @keydown.enter="handleAnswer('forgot')"
-              >
-                {{ t('flashcard.forgot') }}
-              </button>
-              <button
-                type="button"
-                class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="isSaving"
-                :aria-label="t('flashcard.hard')"
-                tabindex="0"
-                @click="handleAnswer('hard')"
-                @keydown.enter="handleAnswer('hard')"
-              >
-                {{ t('flashcard.hard') }}
-              </button>
-              <button
-                type="button"
-                class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="isSaving"
-                :aria-label="t('flashcard.yes')"
-                tabindex="0"
-                @click="handleAnswer('yes')"
-                @keydown.enter="handleAnswer('yes')"
-              >
-                {{ t('flashcard.yes') }}
-              </button>
-            </div>
-          </template>
+          <p
+            v-if="showReadButton && !wordSet.speechLanguage"
+            class="mb-4 text-center text-sm text-amber-700"
+            role="status"
+          >
+            {{ t('flashcard.setSpeechLanguage') }}
+          </p>
+
+          <div
+            v-if="isFlipped"
+            class="mt-auto grid gap-3 pb-2 sm:grid-cols-3"
+          >
+            <button
+              type="button"
+              class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isSaving"
+              aria-label="Mark as forgot"
+              tabindex="0"
+              @click="handleAnswer('forgot')"
+              @keydown.enter="handleAnswer('forgot')"
+            >
+              {{ t('flashcard.forgot') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isSaving"
+              :aria-label="t('flashcard.hard')"
+              tabindex="0"
+              @click="handleAnswer('hard')"
+              @keydown.enter="handleAnswer('hard')"
+            >
+              {{ t('flashcard.hard') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="isSaving"
+              :aria-label="t('flashcard.yes')"
+              tabindex="0"
+              @click="handleAnswer('yes')"
+              @keydown.enter="handleAnswer('yes')"
+            >
+              {{ t('flashcard.yes') }}
+            </button>
+          </div>
         </div>
       </template>
 
@@ -303,6 +307,15 @@ const hasShownCompletionModal = ref(false)
 const completionModalTitleId = 'flashcard-completion-modal-title'
 
 const currentCard = computed(() => queue.value[currentQueueIndex.value] || null)
+const showWordOnFront = computed(() => Boolean(wordSet.value?.showWordOnFront))
+const frontCardText = computed(() => {
+  if (!currentCard.value) {
+    return ''
+  }
+
+  return showWordOnFront.value ? currentCard.value.word : currentCard.value.meaning
+})
+const showReadButton = computed(() => isFlipped.value || showWordOnFront.value)
 const canSpeak = computed(() => (
   isSupported.value
   && Boolean(wordSet.value?.speechLanguage)
@@ -322,6 +335,14 @@ const speakCurrentWord = () => {
   }
 
   speak(currentCard.value.word, wordSet.value.speechLanguage)
+}
+
+const maybeSpeakOnFront = () => {
+  if (!showWordOnFront.value || isFlipped.value) {
+    return
+  }
+
+  speakCurrentWord()
 }
 
 const shuffleItems = (items) => {
@@ -366,6 +387,12 @@ const playCardEnterAnimation = () => {
   }, 500)
 }
 
+const showNextCardFront = () => {
+  isFlipped.value = false
+  playCardEnterAnimation()
+  maybeSpeakOnFront()
+}
+
 const loadWordSet = async () => {
   isLoading.value = true
   errorMessage.value = ''
@@ -384,8 +411,7 @@ const loadWordSet = async () => {
 
     buildQueue({ reshuffle: true })
     currentQueueIndex.value = 0
-    isFlipped.value = false
-    playCardEnterAnimation()
+    showNextCardFront()
   } catch (error) {
     errorMessage.value = error?.data?.statusMessage || 'Failed to load word set.'
   } finally {
@@ -399,8 +425,7 @@ const handleContinueStudying = () => {
   sessionMessage.value = 'All words marked Yes. Set completed!'
   buildQueue({ reshuffle: true })
   currentQueueIndex.value = 0
-  isFlipped.value = false
-  playCardEnterAnimation()
+  showNextCardFront()
 }
 
 const handleBackToListing = () => {
@@ -415,7 +440,10 @@ const handleFlipCard = () => {
   }
 
   isFlipped.value = true
-  speakCurrentWord()
+
+  if (!showWordOnFront.value) {
+    speakCurrentWord()
+  }
 }
 
 const handleReadAloud = () => {
@@ -475,7 +503,7 @@ const handleAnswer = async (status) => {
       currentQueueIndex.value = (currentQueueIndex.value + 1) % queue.value.length
     }
 
-    playCardEnterAnimation()
+    showNextCardFront()
   } catch (error) {
     errorMessage.value = error?.data?.statusMessage || 'Failed to save flashcard progress.'
   } finally {
@@ -487,9 +515,8 @@ const handleRestart = () => {
   stopSpeaking()
   buildQueue({ reshuffle: true })
   currentQueueIndex.value = 0
-  isFlipped.value = false
   sessionMessage.value = ''
-  playCardEnterAnimation()
+  showNextCardFront()
 }
 
 onMounted(() => {

@@ -5,6 +5,7 @@ import {
   normalizeTitle,
   normalizeVisibility,
   normalizeFlashcardOrder,
+  normalizeShowWordOnFront,
   normalizeSpeechLanguage,
   normalizeWords,
   serializeWordSet,
@@ -50,6 +51,10 @@ export default defineEventHandler(async (event) => {
 
   if (body?.flashcardOrder !== undefined) {
     updates.flashcardOrder = normalizeFlashcardOrder(body.flashcardOrder)
+  }
+
+  if (body?.showWordOnFront !== undefined) {
+    updates.showWordOnFront = normalizeShowWordOnFront(body.showWordOnFront)
   }
 
   if (body?.speechLanguage !== undefined) {

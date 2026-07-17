@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
     wordCount: copiedWords.length,
     visibility: 'private',
     flashcardOrder: sourceWordSet.flashcardOrder || 'sequence',
+    showWordOnFront: Boolean(sourceWordSet.showWordOnFront),
     speechLanguage: sourceWordSet.speechLanguage || '',
   })
 

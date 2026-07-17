@@ -186,6 +186,22 @@
             </option>
           </select>
         </div>
+
+        <label
+          for="show-word-on-front"
+          class="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700"
+        >
+          <input
+            id="show-word-on-front"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+            :checked="Boolean(wordSet.showWordOnFront)"
+            :disabled="isUpdatingShowWordOnFront"
+            aria-label="Show word on flashcard front"
+            @change="handleShowWordOnFrontChange"
+          >
+          Show word on front
+        </label>
       </div>
 
       <p
@@ -735,6 +751,7 @@ const isImporting = ref(false)
 const isUpdatingVisibility = ref(false)
 const isUpdatingFlashcardOrder = ref(false)
 const isUpdatingSpeechLanguage = ref(false)
+const isUpdatingShowWordOnFront = ref(false)
 const updatingFlashcardIndex = ref(-1)
 const isModalOpen = ref(false)
 const editingIndex = ref(-1)
@@ -1063,6 +1080,44 @@ const handleSpeechLanguageChange = async (event) => {
     errorMessage.value = error?.data?.statusMessage || 'Failed to update speech language.'
   } finally {
     isUpdatingSpeechLanguage.value = false
+  }
+}
+
+const handleShowWordOnFrontChange = async (event) => {
+  if (!wordSet.value?.isOwner || isUpdatingShowWordOnFront.value) {
+    return
+  }
+
+  const nextValue = Boolean(event.target.checked)
+
+  if (nextValue === Boolean(wordSet.value.showWordOnFront)) {
+    return
+  }
+
+  isUpdatingShowWordOnFront.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    const response = await $fetch(`/api/word-sets/${wordSet.value.id}`, {
+      method: 'PATCH',
+      body: {
+        showWordOnFront: nextValue,
+      },
+    })
+
+    wordSet.value = {
+      ...wordSet.value,
+      showWordOnFront: Boolean(response.wordSet.showWordOnFront),
+    }
+    successMessage.value = nextValue
+      ? 'Flashcard front will show the word.'
+      : 'Flashcard front will show the meaning.'
+  } catch (error) {
+    event.target.checked = Boolean(wordSet.value.showWordOnFront)
+    errorMessage.value = error?.data?.statusMessage || 'Failed to update flashcard front setting.'
+  } finally {
+    isUpdatingShowWordOnFront.value = false
   }
 }
 
