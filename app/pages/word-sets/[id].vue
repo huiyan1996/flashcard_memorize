@@ -75,8 +75,21 @@
           <button
             v-if="wordSet.isOwner"
             type="button"
+            class="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="isSaving || isModalOpen || isTitleModalOpen"
+            aria-label="Add new vocabulary"
+            tabindex="0"
+            @click="handleOpenAdd"
+            @keydown.enter="handleOpenAdd"
+          >
+            + New Vocabulary
+          </button>
+
+          <button
+            v-if="wordSet.isOwner"
+            type="button"
             class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="isSaving || isTitleModalOpen"
+            :disabled="isSaving || isTitleModalOpen || isModalOpen"
             aria-label="Rename word set"
             tabindex="0"
             @click="handleOpenRename"
@@ -224,7 +237,19 @@
         v-if="wordSet.words.length === 0"
         class="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-600"
       >
-        This word set has no words.
+        <p>This word set has no words.</p>
+        <button
+          v-if="wordSet.isOwner"
+          type="button"
+          class="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="isSaving || isModalOpen || isTitleModalOpen"
+          aria-label="Add new vocabulary"
+          tabindex="0"
+          @click="handleOpenAdd"
+          @keydown.enter="handleOpenAdd"
+        >
+          + New Vocabulary
+        </button>
       </div>
 
       <div
@@ -557,15 +582,15 @@
           :id="modalTitleId"
           class="text-lg font-semibold text-slate-900"
         >
-          Edit word
+          {{ isAddMode ? 'New vocabulary' : 'Edit word' }}
         </h2>
         <p class="mt-1 text-sm text-slate-600">
-          Update this word entry in the set.
+          {{ isAddMode ? 'Add a new word entry to this set.' : 'Update this word entry in the set.' }}
         </p>
 
         <form
           class="mt-6 space-y-4"
-          @submit.prevent="handleSaveEdit"
+          @submit.prevent="handleSaveWord"
         >
           <div>
             <label
@@ -629,7 +654,7 @@
             <button
               type="button"
               class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-              aria-label="Cancel edit"
+              :aria-label="isAddMode ? 'Cancel add vocabulary' : 'Cancel edit'"
               tabindex="0"
               @click="handleCloseModal"
               @keydown.enter="handleCloseModal"
@@ -640,9 +665,9 @@
               type="submit"
               class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="isSaving"
-              aria-label="Save changes"
+              :aria-label="isAddMode ? 'Add vocabulary' : 'Save changes'"
             >
-              {{ isSaving ? 'Saving...' : 'Save' }}
+              {{ isSaving ? 'Saving...' : (isAddMode ? 'Add' : 'Save') }}
             </button>
           </div>
         </form>
@@ -754,11 +779,12 @@ const isUpdatingSpeechLanguage = ref(false)
 const isUpdatingShowWordOnFront = ref(false)
 const updatingFlashcardIndex = ref(-1)
 const isModalOpen = ref(false)
+const isAddMode = ref(false)
 const editingIndex = ref(-1)
 const errorMessage = ref('')
 const modalErrorMessage = ref('')
 const successMessage = ref('')
-const modalTitleId = 'edit-word-modal-title'
+const modalTitleId = 'word-modal-title'
 const speechLanguages = SPEECH_LANGUAGES
 const expandedRows = reactive({})
 
@@ -795,8 +821,27 @@ const loadWordSet = async () => {
   }
 }
 
+const resetWordForm = () => {
+  editForm.word = ''
+  editForm.meaning = ''
+  editForm.description = ''
+  modalErrorMessage.value = ''
+}
+
+const handleOpenAdd = () => {
+  if (!wordSet.value?.isOwner || isSaving.value || isModalOpen.value || isTitleModalOpen.value) {
+    return
+  }
+
+  isAddMode.value = true
+  editingIndex.value = -1
+  resetWordForm()
+  successMessage.value = ''
+  isModalOpen.value = true
+}
+
 const handleOpenEdit = (index) => {
-  if (!wordSet.value?.isOwner) {
+  if (!wordSet.value?.isOwner || isSaving.value || isModalOpen.value || isTitleModalOpen.value) {
     return
   }
 
@@ -806,6 +851,7 @@ const handleOpenEdit = (index) => {
     return
   }
 
+  isAddMode.value = false
   editingIndex.value = index
   editForm.word = item.word
   editForm.meaning = item.meaning
@@ -821,35 +867,56 @@ const handleCloseModal = () => {
   }
 
   isModalOpen.value = false
+  isAddMode.value = false
   editingIndex.value = -1
   modalErrorMessage.value = ''
 }
 
-const handleSaveEdit = async () => {
-  if (isSaving.value || editingIndex.value < 0 || !wordSet.value) {
+const serializeWords = (words) => words.map((item) => ({
+  word: item.word,
+  meaning: item.meaning,
+  description: item.description || '',
+  flashcardStatus: item.flashcardStatus || 'none',
+}))
+
+const handleSaveWord = async () => {
+  if (isSaving.value || !wordSet.value) {
+    return
+  }
+
+  if (!isAddMode.value && editingIndex.value < 0) {
+    return
+  }
+
+  const nextWord = {
+    word: editForm.word.trim(),
+    meaning: editForm.meaning.trim(),
+    description: editForm.description.trim(),
+    flashcardStatus: isAddMode.value
+      ? 'none'
+      : (wordSet.value.words[editingIndex.value]?.flashcardStatus || 'none'),
+  }
+
+  if (!nextWord.word || !nextWord.meaning) {
+    modalErrorMessage.value = 'Word and meaning are required.'
     return
   }
 
   isSaving.value = true
   modalErrorMessage.value = ''
 
-  const updatedWords = wordSet.value.words.map((item, index) => {
-    if (index !== editingIndex.value) {
-      return {
-        word: item.word,
-        meaning: item.meaning,
-        description: item.description || '',
-        flashcardStatus: item.flashcardStatus || 'none',
-      }
-    }
-
-    return {
-      word: editForm.word.trim(),
-      meaning: editForm.meaning.trim(),
-      description: editForm.description.trim(),
-      flashcardStatus: wordSet.value.words[editingIndex.value]?.flashcardStatus || 'none',
-    }
-  })
+  const updatedWords = isAddMode.value
+    ? [...serializeWords(wordSet.value.words), nextWord]
+    : wordSet.value.words.map((item, index) => (
+      index === editingIndex.value
+        ? nextWord
+        : {
+            word: item.word,
+            meaning: item.meaning,
+            description: item.description || '',
+            flashcardStatus: item.flashcardStatus || 'none',
+          }
+    ))
 
   try {
     const response = await $fetch(`/api/word-sets/${wordSet.value.id}`, {
@@ -860,10 +927,14 @@ const handleSaveEdit = async () => {
     })
 
     wordSet.value = response.wordSet
-    successMessage.value = 'Word updated successfully.'
+    successMessage.value = isAddMode.value
+      ? 'Vocabulary added successfully.'
+      : 'Word updated successfully.'
     handleCloseModal()
   } catch (error) {
-    modalErrorMessage.value = error?.data?.statusMessage || 'Failed to save word.'
+    modalErrorMessage.value = error?.data?.statusMessage || (
+      isAddMode.value ? 'Failed to add vocabulary.' : 'Failed to save word.'
+    )
   } finally {
     isSaving.value = false
   }
