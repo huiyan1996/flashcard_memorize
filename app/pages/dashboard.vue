@@ -34,21 +34,48 @@
     </div>
 
     <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 class="text-xl font-semibold text-slate-900">
             Test scores
           </h2>
           <p class="mt-1 text-sm text-slate-600">
-            Vocabulary quiz results over time
+            Vocabulary quiz results by word set
           </p>
         </div>
-        <p
-          v-if="latestScore !== null"
-          class="text-sm font-medium text-slate-700"
+
+        <div
+          v-if="wordSetOptions.length"
+          class="flex flex-col gap-2 sm:items-end"
         >
-          Latest: {{ latestScore }}%
-        </p>
+          <label
+            for="score-word-set"
+            class="text-sm font-medium text-slate-700"
+          >
+            Word set
+          </label>
+          <select
+            id="score-word-set"
+            v-model="selectedWordSetId"
+            class="min-w-[14rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500"
+            aria-label="Select word set for score chart"
+            @change="handleWordSetChange"
+          >
+            <option
+              v-for="option in wordSetOptions"
+              :key="option.id"
+              :value="option.id"
+            >
+              {{ option.title }}
+            </option>
+          </select>
+          <p
+            v-if="selectedLatestScore !== null"
+            class="text-sm font-medium text-slate-700"
+          >
+            Latest: {{ selectedLatestScore }}%
+          </p>
+        </div>
       </div>
 
       <div
@@ -76,13 +103,22 @@
       </div>
 
       <div
+        v-else-if="filteredAttempts.length === 0"
+        class="mt-8 flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center"
+      >
+        <p class="text-sm text-slate-600">
+          No scores for this word set yet.
+        </p>
+      </div>
+
+      <div
         v-else
         class="mt-6"
       >
         <div class="relative h-72 w-full sm:h-80">
           <canvas
             ref="chartCanvas"
-            aria-label="Quiz score chart by date and time"
+            aria-label="Quiz score chart by date and time for selected word set"
             role="img"
           />
         </div>
@@ -95,9 +131,6 @@
           >
             <div>
               <p class="font-medium text-slate-900">
-                {{ attempt.wordSetTitle }}
-              </p>
-              <p class="text-slate-500">
                 {{ formatAttemptDate(attempt.createdAt) }}
               </p>
             </div>
@@ -223,6 +256,7 @@ const { t } = useLocale()
 const { $Chart } = useNuxtApp()
 
 const attempts = ref([])
+const selectedWordSetId = ref('')
 const isLoadingAttempts = ref(true)
 const attemptsError = ref('')
 const chartCanvas = ref(null)
@@ -233,16 +267,46 @@ const displayName = computed(() => {
   return name || t('common.there')
 })
 
-const latestScore = computed(() => {
-  if (!attempts.value.length) {
+const wordSetOptions = computed(() => {
+  const byId = new Map()
+
+  // Newest attempts last in `attempts`; walk newest-first for title freshness
+  for (let index = attempts.value.length - 1; index >= 0; index -= 1) {
+    const attempt = attempts.value[index]
+    const id = attempt?.wordSetId
+
+    if (!id || byId.has(id)) {
+      continue
+    }
+
+    byId.set(id, {
+      id,
+      title: attempt.wordSetTitle || 'Untitled set',
+      latestAt: attempt.createdAt,
+    })
+  }
+
+  return [...byId.values()]
+})
+
+const filteredAttempts = computed(() => {
+  if (!selectedWordSetId.value) {
+    return []
+  }
+
+  return attempts.value.filter((item) => item.wordSetId === selectedWordSetId.value)
+})
+
+const selectedLatestScore = computed(() => {
+  if (!filteredAttempts.value.length) {
     return null
   }
 
-  return attempts.value[attempts.value.length - 1]?.score ?? null
+  return filteredAttempts.value[filteredAttempts.value.length - 1]?.score ?? null
 })
 
 const recentAttempts = computed(() => (
-  [...attempts.value].reverse().slice(0, 8)
+  [...filteredAttempts.value].reverse().slice(0, 8)
 ))
 
 const formatAttemptDate = (value) => {
@@ -269,14 +333,16 @@ const destroyChart = () => {
 }
 
 const renderChart = () => {
-  if (!import.meta.client || !$Chart || !chartCanvas.value || !attempts.value.length) {
+  if (!import.meta.client || !$Chart || !chartCanvas.value || !filteredAttempts.value.length) {
+    destroyChart()
     return
   }
 
   destroyChart()
 
-  const labels = attempts.value.map((item) => formatAttemptDate(item.createdAt))
-  const scores = attempts.value.map((item) => item.score)
+  const chartAttempts = filteredAttempts.value
+  const labels = chartAttempts.map((item) => formatAttemptDate(item.createdAt))
+  const scores = chartAttempts.map((item) => item.score)
 
   chartInstance = new $Chart(chartCanvas.value, {
     type: 'line',
@@ -308,12 +374,12 @@ const renderChart = () => {
         tooltip: {
           callbacks: {
             afterLabel: (context) => {
-              const attempt = attempts.value[context.dataIndex]
+              const attempt = chartAttempts[context.dataIndex]
               if (!attempt) {
                 return ''
               }
 
-              return `${attempt.wordSetTitle} · ${attempt.correctCount}/${attempt.totalCount}`
+              return `${attempt.correctCount}/${attempt.totalCount} correct`
             },
           },
         },
@@ -343,6 +409,21 @@ const renderChart = () => {
   })
 }
 
+const selectDefaultWordSet = () => {
+  if (!attempts.value.length) {
+    selectedWordSetId.value = ''
+    return
+  }
+
+  const latestAttempt = attempts.value[attempts.value.length - 1]
+  selectedWordSetId.value = latestAttempt?.wordSetId || ''
+}
+
+const handleWordSetChange = async () => {
+  await nextTick()
+  renderChart()
+}
+
 const loadAttempts = async () => {
   isLoadingAttempts.value = true
   attemptsError.value = ''
@@ -352,15 +433,17 @@ const loadAttempts = async () => {
       query: { limit: 100 },
     })
     attempts.value = response.attempts || []
+    selectDefaultWordSet()
   } catch (error) {
     attemptsError.value = error?.data?.statusMessage || 'Failed to load test scores.'
     attempts.value = []
+    selectedWordSetId.value = ''
   } finally {
     isLoadingAttempts.value = false
   }
 }
 
-watch(attempts, async () => {
+watch(filteredAttempts, async () => {
   await nextTick()
   renderChart()
 })
