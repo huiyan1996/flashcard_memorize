@@ -72,6 +72,16 @@
             Flashcard
           </NuxtLink>
 
+          <NuxtLink
+            v-if="wordSet.isOwner && wordSet.wordCount >= 4"
+            :to="`/quiz/${wordSet.id}`"
+            class="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+            aria-label="Take vocabulary test"
+            tabindex="0"
+          >
+            Test
+          </NuxtLink>
+
           <button
             v-if="wordSet.isOwner"
             type="button"

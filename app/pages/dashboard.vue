@@ -33,6 +33,85 @@
       </div>
     </div>
 
+    <div class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 class="text-xl font-semibold text-slate-900">
+            Test scores
+          </h2>
+          <p class="mt-1 text-sm text-slate-600">
+            Vocabulary quiz results over time
+          </p>
+        </div>
+        <p
+          v-if="latestScore !== null"
+          class="text-sm font-medium text-slate-700"
+        >
+          Latest: {{ latestScore }}%
+        </p>
+      </div>
+
+      <div
+        v-if="isLoadingAttempts"
+        class="mt-8 flex h-64 items-center justify-center text-sm text-slate-500"
+      >
+        Loading scores...
+      </div>
+
+      <p
+        v-else-if="attemptsError"
+        class="mt-6 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700"
+        role="alert"
+      >
+        {{ attemptsError }}
+      </p>
+
+      <div
+        v-else-if="attempts.length === 0"
+        class="mt-8 flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center"
+      >
+        <p class="text-sm text-slate-600">
+          No test scores yet. Take a vocabulary test from a word set to see your progress here.
+        </p>
+      </div>
+
+      <div
+        v-else
+        class="mt-6"
+      >
+        <div class="relative h-72 w-full sm:h-80">
+          <canvas
+            ref="chartCanvas"
+            aria-label="Quiz score chart by date and time"
+            role="img"
+          />
+        </div>
+
+        <ul class="mt-6 divide-y divide-slate-100 border-t border-slate-100">
+          <li
+            v-for="attempt in recentAttempts"
+            :key="attempt.id"
+            class="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
+          >
+            <div>
+              <p class="font-medium text-slate-900">
+                {{ attempt.wordSetTitle }}
+              </p>
+              <p class="text-slate-500">
+                {{ formatAttemptDate(attempt.createdAt) }}
+              </p>
+            </div>
+            <p class="font-semibold text-indigo-600">
+              {{ attempt.score }}%
+              <span class="font-normal text-slate-500">
+                ({{ attempt.correctCount }}/{{ attempt.totalCount }})
+              </span>
+            </p>
+          </li>
+        </ul>
+      </div>
+    </div>
+
     <div class="grid gap-6 sm:grid-cols-2">
       <NuxtLink
         to="/listing"
@@ -141,9 +220,156 @@ definePageMeta({
 
 const { user } = useAuth()
 const { t } = useLocale()
+const { $Chart } = useNuxtApp()
+
+const attempts = ref([])
+const isLoadingAttempts = ref(true)
+const attemptsError = ref('')
+const chartCanvas = ref(null)
+let chartInstance = null
 
 const displayName = computed(() => {
   const name = String(user.value?.name || '').trim()
   return name || t('common.there')
+})
+
+const latestScore = computed(() => {
+  if (!attempts.value.length) {
+    return null
+  }
+
+  return attempts.value[attempts.value.length - 1]?.score ?? null
+})
+
+const recentAttempts = computed(() => (
+  [...attempts.value].reverse().slice(0, 8)
+))
+
+const formatAttemptDate = (value) => {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const destroyChart = () => {
+  if (chartInstance) {
+    chartInstance.destroy()
+    chartInstance = null
+  }
+}
+
+const renderChart = () => {
+  if (!import.meta.client || !$Chart || !chartCanvas.value || !attempts.value.length) {
+    return
+  }
+
+  destroyChart()
+
+  const labels = attempts.value.map((item) => formatAttemptDate(item.createdAt))
+  const scores = attempts.value.map((item) => item.score)
+
+  chartInstance = new $Chart(chartCanvas.value, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Score (%)',
+          data: scores,
+          borderColor: '#4f46e5',
+          backgroundColor: 'rgba(79, 70, 229, 0.12)',
+          pointBackgroundColor: '#4f46e5',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: true,
+          tension: 0.3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            afterLabel: (context) => {
+              const attempt = attempts.value[context.dataIndex]
+              if (!attempt) {
+                return ''
+              }
+
+              return `${attempt.wordSetTitle} · ${attempt.correctCount}/${attempt.totalCount}`
+            },
+          },
+        },
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          ticks: {
+            callback: (value) => `${value}%`,
+          },
+          title: {
+            display: true,
+            text: 'Score',
+          },
+        },
+        x: {
+          ticks: {
+            maxRotation: 45,
+            minRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 8,
+          },
+        },
+      },
+    },
+  })
+}
+
+const loadAttempts = async () => {
+  isLoadingAttempts.value = true
+  attemptsError.value = ''
+
+  try {
+    const response = await $fetch('/api/quiz-attempts', {
+      query: { limit: 100 },
+    })
+    attempts.value = response.attempts || []
+  } catch (error) {
+    attemptsError.value = error?.data?.statusMessage || 'Failed to load test scores.'
+    attempts.value = []
+  } finally {
+    isLoadingAttempts.value = false
+  }
+}
+
+watch(attempts, async () => {
+  await nextTick()
+  renderChart()
+})
+
+onMounted(async () => {
+  await loadAttempts()
+})
+
+onBeforeUnmount(() => {
+  destroyChart()
 })
 </script>

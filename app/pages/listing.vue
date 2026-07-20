@@ -151,6 +151,16 @@
                   </NuxtLink>
 
                   <NuxtLink
+                    v-if="wordSet.wordCount >= 4"
+                    :to="`/quiz/${wordSet.id}`"
+                    class="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    :aria-label="`Test ${wordSet.title}`"
+                    tabindex="0"
+                  >
+                    Test
+                  </NuxtLink>
+
+                  <NuxtLink
                     :to="`/word-sets/${wordSet.id}`"
                     class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     :aria-label="`View ${wordSet.title}`"
@@ -349,6 +359,16 @@
                 tabindex="0"
               >
                 Flashcard
+              </NuxtLink>
+            </div>
+            <div v-if="wordSet.wordCount >= 4">
+              <NuxtLink
+                :to="`/quiz/${wordSet.id}`"
+                class="inline-flex w-full items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                :aria-label="`Test ${wordSet.title}`"
+                tabindex="0"
+              >
+                Test
               </NuxtLink>
             </div>
           </div>
