@@ -339,9 +339,11 @@ const speakCurrentWord = () => {
   const speechLanguage = wordSet.value.speechLanguage
   const parts = [currentCard.value.word]
   const description = currentCard.value.description || ''
+  const shouldIncludeDescription = !(showWordOnFront.value && !isFlipped.value)
 
   if (
-    description
+    shouldIncludeDescription
+    && description
     && isTextMatchingSpeechLanguage(description, speechLanguage)
   ) {
     parts.push(description)
