@@ -49,14 +49,36 @@ export const useSpeechSynthesis = () => {
     return voices.find((voice) => voice.lang.startsWith(languagePrefix)) || null
   }
 
-  const speak = (text, lang = '') => {
+  const sanitizeSpeechText = (text) => String(text || '')
+    .replace(/\p{P}+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const createUtterance = (text, lang) => {
+    const utterance = new SpeechSynthesisUtterance(text)
+
+    if (lang) {
+      utterance.lang = lang
+      const voice = pickVoice(lang)
+
+      if (voice) {
+        utterance.voice = voice
+      }
+    }
+
+    return utterance
+  }
+
+  const speakParts = (parts, lang = '') => {
     if (!import.meta.client || !isSupported.value) {
       return false
     }
 
-    const nextText = String(text || '').trim()
+    const texts = (Array.isArray(parts) ? parts : [parts])
+      .map((item) => sanitizeSpeechText(item))
+      .filter(Boolean)
 
-    if (!nextText) {
+    if (!texts.length) {
       return false
     }
 
@@ -70,31 +92,33 @@ export const useSpeechSynthesis = () => {
 
       clearVoicesHandler()
 
-      const utterance = new SpeechSynthesisUtterance(nextText)
-
-      if (lang) {
-        utterance.lang = lang
-        const voice = pickVoice(lang)
-
-        if (voice) {
-          utterance.voice = voice
+      const queueNext = (index) => {
+        if (requestId !== speakRequestId) {
+          return
         }
-      }
 
-      utterance.onend = () => {
-        if (requestId === speakRequestId) {
+        if (index >= texts.length) {
           isSpeaking.value = false
+          return
         }
+
+        const utterance = createUtterance(texts[index], lang)
+
+        utterance.onend = () => {
+          queueNext(index + 1)
+        }
+
+        utterance.onerror = () => {
+          if (requestId === speakRequestId) {
+            isSpeaking.value = false
+          }
+        }
+
+        isSpeaking.value = true
+        window.speechSynthesis.speak(utterance)
       }
 
-      utterance.onerror = () => {
-        if (requestId === speakRequestId) {
-          isSpeaking.value = false
-        }
-      }
-
-      isSpeaking.value = true
-      window.speechSynthesis.speak(utterance)
+      queueNext(0)
     }
 
     const voices = window.speechSynthesis.getVoices()
@@ -110,6 +134,8 @@ export const useSpeechSynthesis = () => {
     return true
   }
 
+  const speak = (text, lang = '') => speakParts([text], lang)
+
   onBeforeUnmount(() => {
     stopSpeaking()
   })
@@ -118,6 +144,7 @@ export const useSpeechSynthesis = () => {
     isSupported,
     isSpeaking,
     speak,
+    speakParts,
     stopSpeaking,
   }
 }

@@ -283,6 +283,8 @@
 </template>
 
 <script setup>
+import { isTextMatchingSpeechLanguage } from '~/utils/detect-speech-language'
+
 definePageMeta({
   layout: 'app',
   middleware: 'auth',
@@ -290,7 +292,7 @@ definePageMeta({
 
 const route = useRoute()
 const router = useRouter()
-const { isSupported, isSpeaking, speak, stopSpeaking } = useSpeechSynthesis()
+const { isSupported, isSpeaking, speakParts, stopSpeaking } = useSpeechSynthesis()
 const { t } = useLocale()
 const wordSet = ref(null)
 const queue = ref([])
@@ -334,7 +336,18 @@ const speakCurrentWord = () => {
     return
   }
 
-  speak(currentCard.value.word, wordSet.value.speechLanguage)
+  const speechLanguage = wordSet.value.speechLanguage
+  const parts = [currentCard.value.word]
+  const description = currentCard.value.description || ''
+
+  if (
+    description
+    && isTextMatchingSpeechLanguage(description, speechLanguage)
+  ) {
+    parts.push(description)
+  }
+
+  speakParts(parts, speechLanguage)
 }
 
 const maybeSpeakOnFront = () => {
