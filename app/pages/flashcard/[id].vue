@@ -283,7 +283,7 @@
 </template>
 
 <script setup>
-import { isTextMatchingSpeechLanguage } from '~/utils/detect-speech-language'
+import { isTextMatchingSpeechLanguage, extractSpeechTextForLanguage } from '~/utils/detect-speech-language'
 
 definePageMeta({
   layout: 'app',
@@ -346,7 +346,12 @@ const speakCurrentWord = () => {
     && description
     && isTextMatchingSpeechLanguage(description, speechLanguage)
   ) {
-    parts.push(description)
+    // Only speak target-language segments (avoids 中泰混读 on mixed notes)
+    const descriptionForSpeech = extractSpeechTextForLanguage(description, speechLanguage)
+
+    if (descriptionForSpeech) {
+      parts.push(descriptionForSpeech)
+    }
   }
 
   speakParts(parts, speechLanguage)

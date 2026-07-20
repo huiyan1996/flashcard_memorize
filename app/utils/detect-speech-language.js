@@ -40,9 +40,51 @@ const hasEnoughShare = (count, total, minimumCount = 1, minimumShare = 0.3) => {
   return count / total >= minimumShare
 }
 
+const getLanguagePrefix = (speechLanguage = '') => (
+  String(speechLanguage || '').trim().split('-')[0].toLowerCase()
+)
+
 /**
- * Heuristic check: does `text` look like the configured speech language?
- * Uses script detection (Thai, CJK, kana, Hangul, Latin) — not a full language ID.
+ * Keep only script segments that belong to the configured speech language.
+ * Mixed Chinese/Thai notes are common; speaking the whole string causes
+ * mobile TTS engines to language-switch mid utterance (中泰混读).
+ */
+export const extractSpeechTextForLanguage = (text, speechLanguage = '') => {
+  const normalizedText = String(text || '').trim()
+  const languagePrefix = getLanguagePrefix(speechLanguage)
+
+  if (!normalizedText || !languagePrefix) {
+    return ''
+  }
+
+  let keepPattern = null
+
+  if (languagePrefix === 'th') {
+    keepPattern = /[\u0E00-\u0E7F0-9\s]+/g
+  } else if (languagePrefix === 'zh') {
+    keepPattern = /[\u3400-\u9FFF\uF900-\uFAFF0-9\s]+/g
+  } else if (languagePrefix === 'ja') {
+    keepPattern = /[\u3040-\u309F\u30A0-\u30FF\u3400-\u9FFF\uF900-\uFAFF0-9\s]+/g
+  } else if (languagePrefix === 'ko') {
+    keepPattern = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF0-9\s]+/g
+  } else {
+    // Latin-script languages: drop Thai / CJK / Hangul / kana runs
+    keepPattern = /[A-Za-z\u00C0-\u024F\u1E00-\u1EFF0-9\s'-]+/g
+  }
+
+  const parts = normalizedText.match(keepPattern) || []
+
+  return parts
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+}
+
+/**
+ * Heuristic check: does `text` contain enough of the configured speech language
+ * to be worth speaking? Mixed-script text can still match if target script is present;
+ * callers should speak `extractSpeechTextForLanguage(...)` rather than the raw string.
  */
 export const isTextMatchingSpeechLanguage = (text, speechLanguage = '') => {
   const normalizedText = String(text || '').trim()
@@ -52,45 +94,30 @@ export const isTextMatchingSpeechLanguage = (text, speechLanguage = '') => {
     return false
   }
 
-  const languagePrefix = langCode.split('-')[0].toLowerCase()
-  const counts = getLetterCounts(normalizedText)
+  const languagePrefix = getLanguagePrefix(langCode)
+  const extracted = extractSpeechTextForLanguage(normalizedText, langCode)
+  const counts = getLetterCounts(extracted)
 
-  if (counts.total === 0) {
+  if (!extracted || counts.total === 0) {
     return false
   }
 
+  // Require a real amount of target-language letters in the extracted text
   if (languagePrefix === 'th') {
-    return hasEnoughShare(counts.thai, counts.total)
+    return hasEnoughShare(counts.thai, counts.total, 2, 0.6)
   }
 
   if (languagePrefix === 'ko') {
-    return hasEnoughShare(counts.hangul, counts.total)
+    return hasEnoughShare(counts.hangul, counts.total, 2, 0.6)
   }
 
   if (languagePrefix === 'ja') {
-    if (counts.japaneseKana > 0) {
-      return hasEnoughShare(counts.japaneseKana + counts.cjk, counts.total)
-    }
-
-    return hasEnoughShare(counts.cjk, counts.total, 2, 0.5)
+    return hasEnoughShare(counts.japaneseKana + counts.cjk, counts.total, 2, 0.6)
   }
 
   if (languagePrefix === 'zh') {
-    if (counts.japaneseKana > 0 || counts.hangul > 0 || counts.thai > 0) {
-      return false
-    }
-
-    return hasEnoughShare(counts.cjk, counts.total)
+    return hasEnoughShare(counts.cjk, counts.total, 1, 0.6)
   }
 
-  // Latin-script languages (en, es, fr, de, vi, id, ms, ...)
-  if (counts.thai > 0 || counts.hangul > 0 || counts.japaneseKana > 0) {
-    return false
-  }
-
-  if (counts.cjk > 0 && counts.cjk >= counts.latin) {
-    return false
-  }
-
-  return hasEnoughShare(counts.latin, counts.total)
+  return hasEnoughShare(counts.latin, counts.total, 2, 0.6)
 }

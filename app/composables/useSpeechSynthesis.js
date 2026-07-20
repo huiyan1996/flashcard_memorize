@@ -39,14 +39,48 @@ export const useSpeechSynthesis = () => {
     }
 
     const voices = window.speechSynthesis.getVoices()
-    const exactMatch = voices.find((voice) => voice.lang === lang)
 
-    if (exactMatch) {
-      return exactMatch
+    if (!voices.length) {
+      return null
     }
 
-    const languagePrefix = lang.split('-')[0]
-    return voices.find((voice) => voice.lang.startsWith(languagePrefix)) || null
+    const normalizeLang = (value) => String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-')
+
+    const target = normalizeLang(lang)
+    const targetPrefix = target.split('-')[0]
+
+    const scored = voices
+      .map((voice) => {
+        const voiceLang = normalizeLang(voice.lang)
+        const voicePrefix = voiceLang.split('-')[0]
+        let score = 0
+
+        if (voiceLang === target) {
+          score += 100
+        } else if (voiceLang.startsWith(`${targetPrefix}-`) || voicePrefix === targetPrefix) {
+          score += 60
+        } else {
+          return null
+        }
+
+        // Prefer on-device voices; remote/network voices are flakier on mobile
+        if (voice.localService) {
+          score += 20
+        }
+
+        if (voice.default) {
+          score += 5
+        }
+
+        return { voice, score }
+      })
+      .filter(Boolean)
+      .sort((left, right) => right.score - left.score)
+
+    return scored[0]?.voice || null
   }
 
   const sanitizeSpeechText = (text) => String(text || '')
@@ -58,11 +92,17 @@ export const useSpeechSynthesis = () => {
     const utterance = new SpeechSynthesisUtterance(text)
 
     if (lang) {
-      utterance.lang = lang
-      const voice = pickVoice(lang)
+      // Normalize th_TH → th-TH style tags some Android voices use
+      const normalizedLang = String(lang).replace(/_/g, '-')
+      utterance.lang = normalizedLang
+      const voice = pickVoice(normalizedLang)
 
       if (voice) {
         utterance.voice = voice
+        // Keep lang aligned with the chosen voice to reduce mid-utterance switching
+        if (voice.lang) {
+          utterance.lang = voice.lang
+        }
       }
     }
 
