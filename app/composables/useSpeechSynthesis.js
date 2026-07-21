@@ -4,112 +4,83 @@ export const useSpeechSynthesis = () => {
       return false
     }
 
-    return 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
+    return typeof Audio !== 'undefined'
   })
 
   const isSpeaking = ref(false)
   let speakRequestId = 0
-  let voicesChangedHandler = null
-
-  const clearVoicesHandler = () => {
-    if (!import.meta.client || !voicesChangedHandler) {
-      return
-    }
-
-    window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler)
-    voicesChangedHandler = null
-  }
-
-  const stopSpeaking = () => {
-    speakRequestId += 1
-    clearVoicesHandler()
-
-    if (!import.meta.client || !isSupported.value) {
-      isSpeaking.value = false
-      return
-    }
-
-    window.speechSynthesis.cancel()
-    isSpeaking.value = false
-  }
-
-  const pickVoice = (lang) => {
-    if (!import.meta.client || !lang) {
-      return null
-    }
-
-    const voices = window.speechSynthesis.getVoices()
-
-    if (!voices.length) {
-      return null
-    }
-
-    const normalizeLang = (value) => String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/_/g, '-')
-
-    const target = normalizeLang(lang)
-    const targetPrefix = target.split('-')[0]
-
-    const scored = voices
-      .map((voice) => {
-        const voiceLang = normalizeLang(voice.lang)
-        const voicePrefix = voiceLang.split('-')[0]
-        let score = 0
-
-        if (voiceLang === target) {
-          score += 100
-        } else if (voiceLang.startsWith(`${targetPrefix}-`) || voicePrefix === targetPrefix) {
-          score += 60
-        } else {
-          return null
-        }
-
-        // Prefer on-device voices; remote/network voices are flakier on mobile
-        if (voice.localService) {
-          score += 20
-        }
-
-        if (voice.default) {
-          score += 5
-        }
-
-        return { voice, score }
-      })
-      .filter(Boolean)
-      .sort((left, right) => right.score - left.score)
-
-    return scored[0]?.voice || null
-  }
+  let audio = null
+  let objectUrl = null
 
   const sanitizeSpeechText = (text) => String(text || '')
     .replace(/\p{P}+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
-  const createUtterance = (text, lang) => {
-    const utterance = new SpeechSynthesisUtterance(text)
-
-    if (lang) {
-      // Normalize th_TH → th-TH style tags some Android voices use
-      const normalizedLang = String(lang).replace(/_/g, '-')
-      utterance.lang = normalizedLang
-      const voice = pickVoice(normalizedLang)
-
-      if (voice) {
-        utterance.voice = voice
-        // Keep lang aligned with the chosen voice to reduce mid-utterance switching
-        if (voice.lang) {
-          utterance.lang = voice.lang
-        }
-      }
+  const cleanupAudio = () => {
+    if (audio) {
+      audio.pause()
+      audio.onended = null
+      audio.onerror = null
+      audio = null
     }
 
-    return utterance
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl)
+      objectUrl = null
+    }
   }
 
-  const speakParts = (parts, lang = '') => {
+  const stopSpeaking = () => {
+    speakRequestId += 1
+    cleanupAudio()
+    isSpeaking.value = false
+  }
+
+  const fetchSpeechAudio = async (texts, lang) => {
+    const body = texts.length === 1
+      ? { text: texts[0], lang }
+      : { parts: texts, lang }
+
+    return await $fetch('/api/tts/speak', {
+      method: 'POST',
+      body,
+      responseType: 'blob',
+    })
+  }
+
+  const playAudioBlob = (blob, requestId) => {
+    return new Promise((resolve, reject) => {
+      if (requestId !== speakRequestId) {
+        resolve()
+        return
+      }
+
+      cleanupAudio()
+      objectUrl = URL.createObjectURL(blob)
+      audio = new Audio(objectUrl)
+
+      audio.onended = () => {
+        if (requestId === speakRequestId) {
+          cleanupAudio()
+        }
+
+        resolve()
+      }
+
+      audio.onerror = () => {
+        if (requestId === speakRequestId) {
+          cleanupAudio()
+        }
+
+        reject(new Error('Speech playback failed.'))
+      }
+
+      audio.play().catch(reject)
+    })
+  }
+
+  const speakParts = async (parts, lang = '') => {
     if (!import.meta.client || !isSupported.value) {
       return false
     }
@@ -124,54 +95,29 @@ export const useSpeechSynthesis = () => {
 
     stopSpeaking()
     const requestId = speakRequestId
+    isSpeaking.value = true
 
-    const runSpeak = () => {
+    try {
+      const audioBlob = await fetchSpeechAudio(texts, lang)
+
       if (requestId !== speakRequestId) {
-        return
+        return false
       }
 
-      clearVoicesHandler()
+      await playAudioBlob(audioBlob, requestId)
 
-      const queueNext = (index) => {
-        if (requestId !== speakRequestId) {
-          return
-        }
-
-        if (index >= texts.length) {
-          isSpeaking.value = false
-          return
-        }
-
-        const utterance = createUtterance(texts[index], lang)
-
-        utterance.onend = () => {
-          queueNext(index + 1)
-        }
-
-        utterance.onerror = () => {
-          if (requestId === speakRequestId) {
-            isSpeaking.value = false
-          }
-        }
-
-        isSpeaking.value = true
-        window.speechSynthesis.speak(utterance)
+      if (requestId === speakRequestId) {
+        isSpeaking.value = false
       }
 
-      queueNext(0)
-    }
-
-    const voices = window.speechSynthesis.getVoices()
-
-    if (!voices.length) {
-      voicesChangedHandler = runSpeak
-      window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler)
-      window.speechSynthesis.getVoices()
       return true
-    }
+    } catch {
+      if (requestId === speakRequestId) {
+        isSpeaking.value = false
+      }
 
-    runSpeak()
-    return true
+      return false
+    }
   }
 
   const speak = (text, lang = '') => speakParts([text], lang)
