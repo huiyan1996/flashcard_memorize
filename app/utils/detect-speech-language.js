@@ -44,6 +44,41 @@ const getLanguagePrefix = (speechLanguage = '') => (
   String(speechLanguage || '').trim().split('-')[0].toLowerCase()
 )
 
+const stripLeadingCjkLabel = (segment) => (
+  segment.replace(/^[\u3400-\u9FFF\uF900-\uFAFF]+[：:]\s*/, '').trim()
+)
+
+const stripKnownMetadataFields = (text) => (
+  String(text || '')
+    .replace(/(?:词语罗马音|例句罗马音|词语拼音|拼音)[：:]\s*[A-Za-z0-9.'\-_\s]+/g, ' ')
+    .replace(/中文[：:]\s*[\u3400-\u9FFF\uF900-\uFAFF]+[。．]?\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+)
+
+const extractJapaneseSpeechText = (text) => {
+  const normalizedText = stripKnownMetadataFields(text)
+
+  if (!normalizedText) {
+    return ''
+  }
+
+  const kanaSegmentPattern = /(?:[\u3400-\u9FFF\uF900-\uFAFF]*[\u3040-\u309F\u30A0-\u30FF]+[\u3400-\u9FFF\uF900-\uFAFF\u3040-\u309F\u30A0-\u30FF0-9\s。、！？．!?]*)+/g
+  const kanaSegments = (normalizedText.match(kanaSegmentPattern) || [])
+    .map(stripLeadingCjkLabel)
+    .filter(Boolean)
+
+  if (kanaSegments.length) {
+    return [...new Set(kanaSegments)].join(' ').trim()
+  }
+
+  const cjkSegments = (normalizedText.match(/[\u3400-\u9FFF\uF900-\uFAFF0-9\s。、！？．]+/g) || [])
+    .map(stripLeadingCjkLabel)
+    .filter(Boolean)
+
+  return cjkSegments.join(' ').trim()
+}
+
 /**
  * Keep only script segments that belong to the configured speech language.
  * Mixed Chinese/Thai notes are common; speaking the whole string causes
@@ -64,7 +99,7 @@ export const extractSpeechTextForLanguage = (text, speechLanguage = '') => {
   } else if (languagePrefix === 'zh') {
     keepPattern = /[\u3400-\u9FFF\uF900-\uFAFF0-9\s]+/g
   } else if (languagePrefix === 'ja') {
-    keepPattern = /[\u3040-\u309F\u30A0-\u30FF\u3400-\u9FFF\uF900-\uFAFF0-9\s]+/g
+    return extractJapaneseSpeechText(normalizedText)
   } else if (languagePrefix === 'ko') {
     keepPattern = /[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF0-9\s]+/g
   } else {
@@ -112,7 +147,10 @@ export const isTextMatchingSpeechLanguage = (text, speechLanguage = '') => {
   }
 
   if (languagePrefix === 'ja') {
-    return hasEnoughShare(counts.japaneseKana + counts.cjk, counts.total, 2, 0.6)
+    const hasKana = /[\u3040-\u309F\u30A0-\u30FF]/.test(extracted)
+    const japaneseLetters = counts.japaneseKana + (hasKana ? counts.cjk : 0)
+
+    return hasEnoughShare(japaneseLetters, counts.total, 2, 0.6)
   }
 
   if (languagePrefix === 'zh') {
