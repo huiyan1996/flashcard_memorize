@@ -83,6 +83,19 @@
           </NuxtLink>
 
           <button
+            v-if="wordSet.wordCount > 0"
+            type="button"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="isExporting"
+            aria-label="Export word set as CSV"
+            tabindex="0"
+            @click="handleExportCsv"
+            @keydown.enter="handleExportCsv"
+          >
+            {{ isExporting ? 'Exporting...' : 'Export CSV' }}
+          </button>
+
+          <button
             v-if="wordSet.isOwner"
             type="button"
             class="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
@@ -771,6 +784,11 @@
 
 <script setup>
 import { SPEECH_LANGUAGES } from '~/utils/speech-languages'
+import {
+  buildWordsCsv,
+  downloadCsvFile,
+  sanitizeFileName,
+} from '~/utils/export-csv'
 
 definePageMeta({
   layout: 'app',
@@ -782,6 +800,7 @@ const router = useRouter()
 const wordSet = ref(null)
 const isLoading = ref(true)
 const isSaving = ref(false)
+const isExporting = ref(false)
 const isImporting = ref(false)
 const isUpdatingVisibility = ref(false)
 const isUpdatingFlashcardOrder = ref(false)
@@ -828,6 +847,27 @@ const loadWordSet = async () => {
     errorMessage.value = error?.data?.statusMessage || 'Failed to load word set.'
   } finally {
     isLoading.value = false
+  }
+}
+
+const handleExportCsv = () => {
+  if (!wordSet.value?.words?.length || isExporting.value) {
+    return
+  }
+
+  isExporting.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    const csvContent = buildWordsCsv(wordSet.value.words)
+    const fileName = `${sanitizeFileName(wordSet.value.title)}.csv`
+    downloadCsvFile(fileName, csvContent)
+    successMessage.value = `Exported "${wordSet.value.title}" as CSV.`
+  } catch (error) {
+    errorMessage.value = error?.message || 'Failed to export CSV.'
+  } finally {
+    isExporting.value = false
   }
 }
 

@@ -146,9 +146,44 @@
             <p class="text-sm font-medium text-slate-500">
               What is the meaning of
             </p>
-            <h2 class="mt-3 text-3xl font-semibold text-slate-900 sm:text-4xl">
-              {{ currentQuestion.word }}
-            </h2>
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+              <h2 class="text-3xl font-semibold text-slate-900 sm:text-4xl">
+                {{ currentQuestion.word }}
+              </h2>
+              <button
+                type="button"
+                class="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="!canSpeak || isSaving"
+                aria-label="Read word aloud"
+                tabindex="0"
+                @click="handleReadAloud"
+                @keydown.enter="handleReadAloud"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.5"
+                  stroke="currentColor"
+                  class="h-5 w-5"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A17.7 17.7 0 0 1 2.25 12c0-.993.074-1.97.217-2.926.234-.847 1.058-1.354 1.938-1.354H6.75Z"
+                  />
+                </svg>
+                {{ isSpeaking ? 'Reading...' : 'Read' }}
+              </button>
+            </div>
+            <p
+              v-if="!wordSet.speechLanguage"
+              class="mt-3 text-sm text-amber-700"
+              role="status"
+            >
+              Set a speech language on the word set to enable text to speech.
+            </p>
 
             <div
               class="mt-8 grid gap-3"
@@ -241,6 +276,7 @@ definePageMeta({
 })
 
 const route = useRoute()
+const { isSupported, isSpeaking, speak, stopSpeaking } = useSpeechSynthesis()
 const wordSet = ref(null)
 const questions = ref([])
 const currentIndex = ref(0)
@@ -252,6 +288,11 @@ const saveMessage = ref('')
 const saveError = ref('')
 
 const currentQuestion = computed(() => questions.value[currentIndex.value] || null)
+const canSpeak = computed(() => (
+  isSupported.value
+  && Boolean(wordSet.value?.speechLanguage)
+  && Boolean(currentQuestion.value?.word)
+))
 const currentPosition = computed(() => {
   if (!questions.value.length) {
     return 0
@@ -283,12 +324,21 @@ const isAnswerCorrect = (question) => (
   && question.selectedMeaning === question.correctMeaning
 )
 
+const handleReadAloud = () => {
+  if (!canSpeak.value || isSaving.value || !currentQuestion.value) {
+    return
+  }
+
+  speak(currentQuestion.value.word, wordSet.value.speechLanguage)
+}
+
 const startQuiz = () => {
   if (!wordSet.value?.words?.length) {
     questions.value = []
     return
   }
 
+  stopSpeaking()
   questions.value = buildQuizQuestions(wordSet.value.words, {
     limit: QUIZ_QUESTION_LIMIT,
   })
@@ -335,6 +385,7 @@ const handlePrevious = () => {
     return
   }
 
+  stopSpeaking()
   currentIndex.value -= 1
 }
 
@@ -343,6 +394,7 @@ const handleNext = () => {
     return
   }
 
+  stopSpeaking()
   currentIndex.value += 1
 }
 
@@ -351,6 +403,7 @@ const handleCheckAnswers = async () => {
     return
   }
 
+  stopSpeaking()
   isReviewing.value = true
   isSaving.value = true
   saveMessage.value = ''
